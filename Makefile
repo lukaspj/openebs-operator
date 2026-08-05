@@ -1,5 +1,5 @@
 # Image URL to use all building/pushing image targets
-IMG ?= ghcr.io/aldershaab-it/openebs-operator:latest
+IMG ?= ghcr.io/lukaspj/openebs-operator:latest
 
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to download and use for envtest
 ENVTEST_K8S_VERSION = 1.32

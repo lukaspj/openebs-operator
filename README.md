@@ -58,7 +58,7 @@ go test ./...
 go build -o bin/manager ./cmd
 ```
 
-Pre-built image: `ghcr.io/aldershaab-it/openebs-operator:latest`
+Pre-built image: `ghcr.io/lukaspj/openebs-operator:latest`
 
 ## License
 

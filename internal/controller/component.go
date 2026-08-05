@@ -10,10 +10,10 @@ import (
 )
 
 const (
-	defaultLVMImage         = "openebs/lvm-driver:v2.12.2"
+	defaultLVMImage         = "openebs/lvm-driver:1.9.1"
 	defaultHostpathImage    = "openebs/provisioner-localpv:4.5.0"
-	defaultZFSImage         = "openebs/zfs-driver:v2.6.0"
-	defaultRawfileImage     = "openebs/rawfile-localpv:v0.8.0"
+	defaultZFSImage         = "openebs/zfs-driver:2.10.1"
+	defaultRawfileImage     = "openebs/rawfile-localpv:0.14.1"
 	defaultCSIProvisioner   = "registry.k8s.io/sig-storage/csi-provisioner:v4.0.1"
 	defaultCSIResizer       = "registry.k8s.io/sig-storage/csi-resizer:v1.10.1"
 	defaultCSISnapshotter   = "registry.k8s.io/sig-storage/csi-snapshotter:v7.0.2"

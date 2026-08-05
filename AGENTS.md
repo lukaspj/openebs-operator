@@ -46,17 +46,17 @@ deploy/                All-in-one operator.yaml + example CR
 
 ## Image versions
 
-Bump these in `component.go` when updating:
+Defaults in `component.go`. Override via CR `spec.images.*` (empty = fall back to default).
 
 ```go
-lvmImage       = "openebs/lvm-driver:v2.12.2"
-hostpathImage  = "openebs/provisioner-localpv:v4.1.0"
-zfsImage       = "openebs/zfs-driver:v2.6.0"
-rawfileImage   = "openebs/rawfile-localpv:v0.8.0"
-csiProvisioner  = "registry.k8s.io/sig-storage/csi-provisioner:v4.0.1"
-csiResizer      = "registry.k8s.io/sig-storage/csi-resizer:v1.10.1"
-csiSnapshotter  = "registry.k8s.io/sig-storage/csi-snapshotter:v7.0.2"
-csiNodeRegistrar = "registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.10.1"
+defaultLVMImage         = "openebs/lvm-driver:1.9.1"
+defaultHostpathImage    = "openebs/provisioner-localpv:4.5.0"
+defaultZFSImage         = "openebs/zfs-driver:2.10.1"
+defaultRawfileImage     = "openebs/rawfile-localpv:0.14.1"
+defaultCSIProvisioner   = "registry.k8s.io/sig-storage/csi-provisioner:v4.0.1"
+defaultCSIResizer       = "registry.k8s.io/sig-storage/csi-resizer:v1.10.1"
+defaultCSISnapshotter   = "registry.k8s.io/sig-storage/csi-snapshotter:v7.0.2"
+defaultCSINodeRegistrar = "registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.10.1"
 ```
 
 ## Dependencies

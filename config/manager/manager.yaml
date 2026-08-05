@@ -33,7 +33,7 @@ spec:
       serviceAccountName: openebs-operator-controller-manager
       containers:
         - name: manager
-          image: ghcr.io/aldershaab-it/openebs-operator:latest
+          image: ghcr.io/lukaspj/openebs-operator:latest
           imagePullPolicy: IfNotPresent
           args:
             - --health-probe-bind-address=:8081
