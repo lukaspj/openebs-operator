@@ -49,6 +49,8 @@ func lvmClusterRole() *rbacv1.ClusterRole {
 			{APIGroups: []string{""}, Resources: []string{"events"}, Verbs: []string{"create", "patch", "update"}},
 			{APIGroups: []string{""}, Resources: []string{"persistentvolumeclaims/status"}, Verbs: []string{"patch", "update"}},
 			{APIGroups: []string{"coordination.k8s.io"}, Resources: []string{"leases"}, Verbs: []string{"get", "watch", "list", "delete", "update", "create"}},
+			{APIGroups: []string{"local.openebs.io"}, Resources: []string{"lvmnodes", "lvmvolumes"}, Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
+			{APIGroups: []string{"local.openebs.io"}, Resources: []string{"lvmvolumes/status"}, Verbs: []string{"patch", "update"}},
 		},
 	}
 }
