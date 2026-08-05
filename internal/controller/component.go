@@ -138,7 +138,7 @@ func lvmControllerDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployme
 						{
 							Name:  "lvm-plugin",
 							Image: lvmPluginImg,
-							Args:  []string{"--endpoint=$(CSI_ENDPOINT)", "--nodeid=$(OPENEBS_NODE_ID)"},
+							Args:  []string{"--plugin-type=controller", "--endpoint=$(CSI_ENDPOINT)", "--nodeid=$(OPENEBS_NODE_ID)"},
 							Env: []corev1.EnvVar{
 								{Name: "OPENEBS_NAMESPACE", Value: openebsNamespace},
 								{Name: "CSI_ENDPOINT", Value: "unix:///var/lib/csi/sockets/pluginproxy/csi.sock"},
@@ -181,6 +181,7 @@ func lvmNodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSet {
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{Labels: labels},
 				Spec: corev1.PodSpec{
+					ServiceAccountName: "openebs-lvm-controller",
 					HostNetwork: true,
 					Containers: []corev1.Container{
 						{
@@ -458,7 +459,7 @@ func zfsControllerDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployme
 						{
 							Name:  "zfs-plugin",
 							Image: zfsPluginImg,
-							Args:  []string{"--endpoint=$(CSI_ENDPOINT)", "--nodeid=$(OPENEBS_NODE_ID)"},
+							Args:  []string{"--plugin-type=controller", "--endpoint=$(CSI_ENDPOINT)", "--nodeid=$(OPENEBS_NODE_ID)"},
 							Env: []corev1.EnvVar{
 								{Name: "OPENEBS_NAMESPACE", Value: openebsNamespace},
 								{Name: "CSI_ENDPOINT", Value: "unix:///var/lib/csi/sockets/pluginproxy/csi.sock"},
@@ -498,6 +499,7 @@ func zfsNodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSet {
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{Labels: labels},
 				Spec: corev1.PodSpec{
+					ServiceAccountName: "openebs-zfs-controller",
 					HostNetwork: true,
 					Containers: []corev1.Container{
 						{
