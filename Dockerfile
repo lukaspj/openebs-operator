@@ -1,4 +1,6 @@
-FROM golang:1.24 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.24 AS builder
+
+ARG TARGETARCH
 
 WORKDIR /workspace
 COPY go.mod go.mod
@@ -9,7 +11,7 @@ COPY cmd/ cmd/
 COPY api/ api/
 COPY internal/ internal/
 
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o manager cmd/main.go
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -o manager cmd/main.go
 
 FROM gcr.io/distroless/static:nonroot
 WORKDIR /
