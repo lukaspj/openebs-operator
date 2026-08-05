@@ -41,17 +41,24 @@ func lvmServiceAccount() *corev1.ServiceAccount {
 
 func lvmClusterRole() *rbacv1.ClusterRole {
 	return &rbacv1.ClusterRole{
-		ObjectMeta: metav1.ObjectMeta{Name: "openebs-lvm-role", Labels: labels("lvm-rbac")},
+		ObjectMeta: metav1.ObjectMeta{Name: "openebs-lvm-role"},
 		Rules: []rbacv1.PolicyRule{
-			{APIGroups: []string{""}, Resources: []string{"nodes", "persistentvolumes"}, Verbs: []string{"get", "list", "watch", "patch", "update"}},
+			{APIGroups: []string{""}, Resources: []string{"namespaces"}, Verbs: []string{"get", "list", "watch"}},
+			{APIGroups: []string{""}, Resources: []string{"nodes", "persistentvolumes", "services"}, Verbs: []string{"get", "list", "watch", "patch", "update"}},
 			{APIGroups: []string{""}, Resources: []string{"persistentvolumeclaims"}, Verbs: []string{"get", "list", "watch", "update"}},
-			{APIGroups: []string{"storage.k8s.io"}, Resources: []string{"storageclasses", "volumeattachments", "csinodes"}, Verbs: []string{"get", "list", "watch"}},
-			{APIGroups: []string{""}, Resources: []string{"events"}, Verbs: []string{"create", "patch", "update"}},
 			{APIGroups: []string{""}, Resources: []string{"persistentvolumeclaims/status"}, Verbs: []string{"patch", "update"}},
+			{APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get", "list", "watch", "update", "patch"}},
+			{APIGroups: []string{""}, Resources: []string{"events"}, Verbs: []string{"get", "list", "watch", "create", "update", "patch"}},
+			{APIGroups: []string{""}, Resources: []string{"secrets"}, Verbs: []string{"get", "list"}},
+			{APIGroups: []string{"storage.k8s.io"}, Resources: []string{"storageclasses", "volumeattachments", "csinodes", "volumeattributesclasses"}, Verbs: []string{"get", "list", "watch"}},
+			{APIGroups: []string{"storage.k8s.io"}, Resources: []string{"csistoragecapacities"}, Verbs: []string{"*"}},
 			{APIGroups: []string{"coordination.k8s.io"}, Resources: []string{"leases"}, Verbs: []string{"get", "watch", "list", "delete", "update", "create"}},
-			{APIGroups: []string{"local.openebs.io"}, Resources: []string{"lvmnodes", "lvmvolumes"}, Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
+			{APIGroups: []string{"local.openebs.io"}, Resources: []string{"lvmnodes", "lvmvolumes", "lvmsnapshots"}, Verbs: []string{"*"}},
 			{APIGroups: []string{"local.openebs.io"}, Resources: []string{"lvmvolumes/status"}, Verbs: []string{"patch", "update"}},
-			{APIGroups: []string{"snapshot.storage.k8s.io"}, Resources: []string{"volumesnapshotclasses", "volumesnapshotcontents", "volumesnapshots"}, Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
+			{APIGroups: []string{"snapshot.storage.k8s.io"}, Resources: []string{"volumesnapshotclasses"}, Verbs: []string{"get", "list", "watch"}},
+			{APIGroups: []string{"snapshot.storage.k8s.io"}, Resources: []string{"volumesnapshotcontents", "volumesnapshots"}, Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
+			{APIGroups: []string{"snapshot.storage.k8s.io"}, Resources: []string{"volumesnapshotcontents/status", "volumesnapshots/status"}, Verbs: []string{"update"}},
+			{APIGroups: []string{"apiextensions.k8s.io"}, Resources: []string{"customresourcedefinitions"}, Verbs: []string{"create", "list", "watch", "delete"}},
 		},
 	}
 }
@@ -400,14 +407,24 @@ func zfsServiceAccount() *corev1.ServiceAccount {
 
 func zfsClusterRole() *rbacv1.ClusterRole {
 	return &rbacv1.ClusterRole{
-		ObjectMeta: metav1.ObjectMeta{Name: "openebs-zfs-role", Labels: labels("zfs-rbac")},
+		ObjectMeta: metav1.ObjectMeta{Name: "openebs-zfs-role"},
 		Rules: []rbacv1.PolicyRule{
-			{APIGroups: []string{""}, Resources: []string{"nodes", "persistentvolumes"}, Verbs: []string{"get", "list", "watch", "patch", "update"}},
+			{APIGroups: []string{""}, Resources: []string{"namespaces"}, Verbs: []string{"get", "list", "watch"}},
+			{APIGroups: []string{""}, Resources: []string{"nodes", "persistentvolumes", "services"}, Verbs: []string{"get", "list", "watch", "patch", "update"}},
 			{APIGroups: []string{""}, Resources: []string{"persistentvolumeclaims"}, Verbs: []string{"get", "list", "watch", "update"}},
-			{APIGroups: []string{"storage.k8s.io"}, Resources: []string{"storageclasses", "volumeattachments", "csinodes"}, Verbs: []string{"get", "list", "watch"}},
-			{APIGroups: []string{""}, Resources: []string{"events"}, Verbs: []string{"create", "patch", "update"}},
+			{APIGroups: []string{""}, Resources: []string{"persistentvolumeclaims/status"}, Verbs: []string{"patch", "update"}},
+			{APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get", "list", "watch", "update", "patch"}},
+			{APIGroups: []string{""}, Resources: []string{"events"}, Verbs: []string{"get", "list", "watch", "create", "update", "patch"}},
+			{APIGroups: []string{""}, Resources: []string{"secrets"}, Verbs: []string{"get", "list"}},
+			{APIGroups: []string{"storage.k8s.io"}, Resources: []string{"storageclasses", "volumeattachments", "csinodes", "volumeattributesclasses"}, Verbs: []string{"get", "list", "watch"}},
+			{APIGroups: []string{"storage.k8s.io"}, Resources: []string{"csistoragecapacities"}, Verbs: []string{"*"}},
 			{APIGroups: []string{"coordination.k8s.io"}, Resources: []string{"leases"}, Verbs: []string{"get", "watch", "list", "delete", "update", "create"}},
-			{APIGroups: []string{"snapshot.storage.k8s.io"}, Resources: []string{"volumesnapshotclasses", "volumesnapshotcontents", "volumesnapshots"}, Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
+			{APIGroups: []string{"zfs.openebs.io"}, Resources: []string{"zfssnapshots", "zfsvolumes", "zfsnodes"}, Verbs: []string{"*"}},
+			{APIGroups: []string{"zfs.openebs.io"}, Resources: []string{"zfsvolumes/status"}, Verbs: []string{"patch", "update"}},
+			{APIGroups: []string{"snapshot.storage.k8s.io"}, Resources: []string{"volumesnapshotclasses"}, Verbs: []string{"get", "list", "watch"}},
+			{APIGroups: []string{"snapshot.storage.k8s.io"}, Resources: []string{"volumesnapshotcontents", "volumesnapshots"}, Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
+			{APIGroups: []string{"snapshot.storage.k8s.io"}, Resources: []string{"volumesnapshotcontents/status", "volumesnapshots/status"}, Verbs: []string{"update"}},
+			{APIGroups: []string{"apiextensions.k8s.io"}, Resources: []string{"customresourcedefinitions"}, Verbs: []string{"create", "list", "watch", "delete"}},
 		},
 	}
 }
