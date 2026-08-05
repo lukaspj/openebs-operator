@@ -45,9 +45,10 @@ func lvmClusterRole() *rbacv1.ClusterRole {
 		Rules: []rbacv1.PolicyRule{
 			{APIGroups: []string{""}, Resources: []string{"nodes", "persistentvolumes"}, Verbs: []string{"get", "list", "watch", "patch", "update"}},
 			{APIGroups: []string{""}, Resources: []string{"persistentvolumeclaims"}, Verbs: []string{"get", "list", "watch", "update"}},
-			{APIGroups: []string{"storage.k8s.io"}, Resources: []string{"storageclasses", "volumeattachments"}, Verbs: []string{"get", "list", "watch"}},
+			{APIGroups: []string{"storage.k8s.io"}, Resources: []string{"storageclasses", "volumeattachments", "csinodes"}, Verbs: []string{"get", "list", "watch"}},
 			{APIGroups: []string{""}, Resources: []string{"events"}, Verbs: []string{"create", "patch", "update"}},
 			{APIGroups: []string{""}, Resources: []string{"persistentvolumeclaims/status"}, Verbs: []string{"patch", "update"}},
+			{APIGroups: []string{"coordination.k8s.io"}, Resources: []string{"leases"}, Verbs: []string{"get", "watch", "list", "delete", "update", "create"}},
 		},
 	}
 }
@@ -92,6 +93,11 @@ func lvmControllerDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployme
 								"--csi-address=$(ADDRESS)",
 								"--v=2",
 								"--feature-gates=Topology=true",
+								"--timeout=150s",
+								"--leader-election",
+								"--leader-election-lease-duration=120s",
+								"--leader-election-renew-deadline=80s",
+								"--leader-election-retry-period=30s",
 							},
 							Env: []corev1.EnvVar{{Name: "ADDRESS", Value: "/var/lib/csi/sockets/pluginproxy/csi.sock"}},
 							VolumeMounts: []corev1.VolumeMount{
@@ -104,6 +110,11 @@ func lvmControllerDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployme
 							Args: []string{
 								"--csi-address=$(ADDRESS)",
 								"--v=2",
+								"--timeout=150s",
+								"--leader-election",
+								"--leader-election-lease-duration=120s",
+								"--leader-election-renew-deadline=80s",
+								"--leader-election-retry-period=30s",
 							},
 							Env: []corev1.EnvVar{{Name: "ADDRESS", Value: "/var/lib/csi/sockets/pluginproxy/csi.sock"}},
 							VolumeMounts: []corev1.VolumeMount{
@@ -116,6 +127,8 @@ func lvmControllerDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployme
 							Args: []string{
 								"--csi-address=$(ADDRESS)",
 								"--v=2",
+								"--timeout=150s",
+								"--leader-election",
 							},
 							Env: []corev1.EnvVar{{Name: "ADDRESS", Value: "/var/lib/csi/sockets/pluginproxy/csi.sock"}},
 							VolumeMounts: []corev1.VolumeMount{
@@ -125,13 +138,14 @@ func lvmControllerDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployme
 						{
 							Name:  "lvm-plugin",
 							Image: lvmPluginImg,
-							Args:  []string{"--plugin-type=controller", "--endpoint=$(CSI_ENDPOINT)", "--nodeid=$(OPENEBS_NODE_ID)"},
+							Args:  []string{"--endpoint=$(CSI_ENDPOINT)", "--nodeid=$(OPENEBS_NODE_ID)"},
 							Env: []corev1.EnvVar{
 								{Name: "OPENEBS_NAMESPACE", Value: openebsNamespace},
 								{Name: "CSI_ENDPOINT", Value: "unix:///var/lib/csi/sockets/pluginproxy/csi.sock"},
 								{Name: "OPENEBS_NODE_ID", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.nodeName"}}},
 								{Name: "OPENEBS_CSI_ENDPOINT", Value: "unix:///var/lib/csi/sockets/pluginproxy/csi.sock"},
 								{Name: "OPENEBS_MONITOR_PERIOD", Value: "60"},
+								{Name: "OPENEBS_IO_INSTALLER_TYPE", Value: "openebs-operator"},
 							},
 							SecurityContext: &corev1.SecurityContext{Privileged: boolPtr(true)},
 							VolumeMounts: []corev1.VolumeMount{
@@ -197,11 +211,12 @@ func lvmNodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSet {
 								},
 								AllowPrivilegeEscalation: boolPtr(true),
 							},
-							Args: []string{"--plugin-type=node", "--endpoint=$(CSI_ENDPOINT)", "--nodeid=$(OPENEBS_NODE_ID)"},
+							Args: []string{"--endpoint=$(CSI_ENDPOINT)", "--nodeid=$(OPENEBS_NODE_ID)"},
 							Env: []corev1.EnvVar{
 								{Name: "OPENEBS_NODE_ID", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.nodeName"}}},
 								{Name: "OPENEBS_NAMESPACE", Value: openebsNamespace},
 								{Name: "CSI_ENDPOINT", Value: "unix:///plugin/csi.sock"},
+								{Name: "OPENEBS_IO_INSTALLER_TYPE", Value: "openebs-operator"},
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{Name: "plugin-dir", MountPath: "/plugin"},
@@ -383,8 +398,9 @@ func zfsClusterRole() *rbacv1.ClusterRole {
 		Rules: []rbacv1.PolicyRule{
 			{APIGroups: []string{""}, Resources: []string{"nodes", "persistentvolumes"}, Verbs: []string{"get", "list", "watch", "patch", "update"}},
 			{APIGroups: []string{""}, Resources: []string{"persistentvolumeclaims"}, Verbs: []string{"get", "list", "watch", "update"}},
-			{APIGroups: []string{"storage.k8s.io"}, Resources: []string{"storageclasses", "volumeattachments"}, Verbs: []string{"get", "list", "watch"}},
+			{APIGroups: []string{"storage.k8s.io"}, Resources: []string{"storageclasses", "volumeattachments", "csinodes"}, Verbs: []string{"get", "list", "watch"}},
 			{APIGroups: []string{""}, Resources: []string{"events"}, Verbs: []string{"create", "patch", "update"}},
+			{APIGroups: []string{"coordination.k8s.io"}, Resources: []string{"leases"}, Verbs: []string{"get", "watch", "list", "delete", "update", "create"}},
 		},
 	}
 }
@@ -424,7 +440,7 @@ func zfsControllerDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployme
 						{
 							Name:  "csi-provisioner",
 							Image: csiProvisionerImg,
-							Args:  []string{"--csi-address=$(ADDRESS)", "--v=2"},
+							Args:  []string{"--csi-address=$(ADDRESS)", "--v=2", "--timeout=150s", "--leader-election", "--leader-election-lease-duration=120s", "--leader-election-renew-deadline=80s", "--leader-election-retry-period=30s"},
 							Env:   []corev1.EnvVar{{Name: "ADDRESS", Value: "/var/lib/csi/sockets/pluginproxy/csi.sock"}},
 							VolumeMounts: []corev1.VolumeMount{
 								{Name: "socket-dir", MountPath: "/var/lib/csi/sockets/pluginproxy/"},
@@ -433,7 +449,7 @@ func zfsControllerDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployme
 						{
 							Name:  "csi-resizer",
 							Image: csiResizerImg,
-							Args:  []string{"--csi-address=$(ADDRESS)", "--v=2"},
+							Args:  []string{"--csi-address=$(ADDRESS)", "--v=2", "--timeout=150s", "--leader-election", "--leader-election-lease-duration=120s", "--leader-election-renew-deadline=80s", "--leader-election-retry-period=30s"},
 							Env:   []corev1.EnvVar{{Name: "ADDRESS", Value: "/var/lib/csi/sockets/pluginproxy/csi.sock"}},
 							VolumeMounts: []corev1.VolumeMount{
 								{Name: "socket-dir", MountPath: "/var/lib/csi/sockets/pluginproxy/"},
@@ -442,11 +458,12 @@ func zfsControllerDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployme
 						{
 							Name:  "zfs-plugin",
 							Image: zfsPluginImg,
-							Args:  []string{"--plugin-type=controller", "--endpoint=$(CSI_ENDPOINT)", "--nodeid=$(OPENEBS_NODE_ID)"},
+							Args:  []string{"--endpoint=$(CSI_ENDPOINT)", "--nodeid=$(OPENEBS_NODE_ID)"},
 							Env: []corev1.EnvVar{
 								{Name: "OPENEBS_NAMESPACE", Value: openebsNamespace},
 								{Name: "CSI_ENDPOINT", Value: "unix:///var/lib/csi/sockets/pluginproxy/csi.sock"},
 								{Name: "OPENEBS_NODE_ID", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.nodeName"}}},
+								{Name: "OPENEBS_IO_INSTALLER_TYPE", Value: "openebs-operator"},
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{Name: "socket-dir", MountPath: "/var/lib/csi/sockets/pluginproxy/"},
@@ -511,11 +528,12 @@ func zfsNodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSet {
 								},
 								AllowPrivilegeEscalation: boolPtr(true),
 							},
-							Args: []string{"--plugin-type=node", "--endpoint=$(CSI_ENDPOINT)", "--nodeid=$(OPENEBS_NODE_ID)"},
+							Args: []string{"--endpoint=$(CSI_ENDPOINT)", "--nodeid=$(OPENEBS_NODE_ID)"},
 							Env: []corev1.EnvVar{
 								{Name: "OPENEBS_NODE_ID", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.nodeName"}}},
 								{Name: "OPENEBS_NAMESPACE", Value: openebsNamespace},
 								{Name: "CSI_ENDPOINT", Value: "unix:///plugin/csi.sock"},
+								{Name: "OPENEBS_IO_INSTALLER_TYPE", Value: "openebs-operator"},
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{Name: "plugin-dir", MountPath: "/plugin"},
