@@ -81,7 +81,15 @@ func (r *OpenEBSReconciler) reconcileNormal(ctx context.Context, instance *stora
 	instance.Status.Conditions = r.buildConditions(instance.Status.Phase, instance.Status.Engines)
 
 	if changed {
-		if err := r.Status().Update(ctx, instance); err != nil {
+		latest := &storagev1alpha1.OpenEBS{}
+		if err := r.Get(ctx, client.ObjectKeyFromObject(instance), latest); err != nil {
+			logger.Error(err, "failed to re-fetch OpenEBS before status update")
+			return ctrl.Result{}, err
+		}
+		latest.Status.Phase = instance.Status.Phase
+		latest.Status.Engines = instance.Status.Engines
+		latest.Status.Conditions = instance.Status.Conditions
+		if err := r.Status().Update(ctx, latest); err != nil {
 			logger.Error(err, "failed to update status")
 			return ctrl.Result{}, err
 		}
