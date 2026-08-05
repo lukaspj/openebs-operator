@@ -35,13 +35,13 @@ func int32Ptr(i int32) *int32 { return &i }
 
 func lvmServiceAccount() *corev1.ServiceAccount {
 	return &corev1.ServiceAccount{
-		ObjectMeta: metav1.ObjectMeta{Name: "openebs-lvm-controller", Namespace: openebsNamespace},
+		ObjectMeta: metav1.ObjectMeta{Name: "openebs-lvm-controller", Namespace: openebsNamespace, Labels: labels("lvm-rbac")},
 	}
 }
 
 func lvmClusterRole() *rbacv1.ClusterRole {
 	return &rbacv1.ClusterRole{
-		ObjectMeta: metav1.ObjectMeta{Name: "openebs-lvm-role"},
+		ObjectMeta: metav1.ObjectMeta{Name: "openebs-lvm-role", Labels: labels("lvm-rbac")},
 		Rules: []rbacv1.PolicyRule{
 			{APIGroups: []string{""}, Resources: []string{"nodes", "persistentvolumes"}, Verbs: []string{"get", "list", "watch", "patch", "update"}},
 			{APIGroups: []string{""}, Resources: []string{"persistentvolumeclaims"}, Verbs: []string{"get", "list", "watch", "update"}},
@@ -51,13 +51,14 @@ func lvmClusterRole() *rbacv1.ClusterRole {
 			{APIGroups: []string{"coordination.k8s.io"}, Resources: []string{"leases"}, Verbs: []string{"get", "watch", "list", "delete", "update", "create"}},
 			{APIGroups: []string{"local.openebs.io"}, Resources: []string{"lvmnodes", "lvmvolumes"}, Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
 			{APIGroups: []string{"local.openebs.io"}, Resources: []string{"lvmvolumes/status"}, Verbs: []string{"patch", "update"}},
+			{APIGroups: []string{"snapshot.storage.k8s.io"}, Resources: []string{"volumesnapshotclasses", "volumesnapshotcontents", "volumesnapshots"}, Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
 		},
 	}
 }
 
 func lvmClusterRoleBinding() *rbacv1.ClusterRoleBinding {
 	return &rbacv1.ClusterRoleBinding{
-		ObjectMeta: metav1.ObjectMeta{Name: "openebs-lvm-binding"},
+		ObjectMeta: metav1.ObjectMeta{Name: "openebs-lvm-binding", Labels: labels("lvm-rbac")},
 		RoleRef:    rbacv1.RoleRef{APIGroup: "rbac.authorization.k8s.io", Kind: "ClusterRole", Name: "openebs-lvm-role"},
 		Subjects:   []rbacv1.Subject{{Kind: "ServiceAccount", Name: "openebs-lvm-controller", Namespace: openebsNamespace}},
 	}
@@ -248,7 +249,7 @@ func lvmCSIDriver() *storagev1.CSIDriver {
 	attachRequired := true
 	podInfoOnMount := true
 	return &storagev1.CSIDriver{
-		ObjectMeta: metav1.ObjectMeta{Name: lvmCSIDriverName},
+		ObjectMeta: metav1.ObjectMeta{Name: lvmCSIDriverName, Labels: labels("lvm-csidriver")},
 		Spec: storagev1.CSIDriverSpec{
 			AttachRequired: &attachRequired,
 			PodInfoOnMount: &podInfoOnMount,
@@ -267,7 +268,8 @@ func lvmStorageClass(name string, cfg *storagev1alpha1.LVMConfig) *storagev1.Sto
 	deletePolicy := corev1.PersistentVolumeReclaimDelete
 	sc := &storagev1.StorageClass{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
+			Name:   name,
+			Labels: labels("lvm-sc"),
 			Annotations: map[string]string{
 				"storageclass.kubernetes.io/is-default-class": boolToStr(cfg.IsDefaultClass),
 			},
@@ -287,13 +289,13 @@ func lvmStorageClass(name string, cfg *storagev1alpha1.LVMConfig) *storagev1.Sto
 
 func hostpathServiceAccount() *corev1.ServiceAccount {
 	return &corev1.ServiceAccount{
-		ObjectMeta: metav1.ObjectMeta{Name: "openebs-localpv-provisioner", Namespace: openebsNamespace},
+		ObjectMeta: metav1.ObjectMeta{Name: "openebs-localpv-provisioner", Namespace: openebsNamespace, Labels: labels("hostpath-rbac")},
 	}
 }
 
 func hostpathClusterRole() *rbacv1.ClusterRole {
 	return &rbacv1.ClusterRole{
-		ObjectMeta: metav1.ObjectMeta{Name: "openebs-localpv-provisioner"},
+		ObjectMeta: metav1.ObjectMeta{Name: "openebs-localpv-provisioner", Labels: labels("hostpath-rbac")},
 		Rules: []rbacv1.PolicyRule{
 			{APIGroups: []string{""}, Resources: []string{"nodes"}, Verbs: []string{"get", "list", "watch"}},
 			{APIGroups: []string{""}, Resources: []string{"persistentvolumes"}, Verbs: []string{"get", "list", "watch", "create", "delete", "update", "patch"}},
@@ -306,7 +308,7 @@ func hostpathClusterRole() *rbacv1.ClusterRole {
 
 func hostpathClusterRoleBinding() *rbacv1.ClusterRoleBinding {
 	return &rbacv1.ClusterRoleBinding{
-		ObjectMeta: metav1.ObjectMeta{Name: "openebs-localpv-provisioner"},
+		ObjectMeta: metav1.ObjectMeta{Name: "openebs-localpv-provisioner", Labels: labels("hostpath-rbac")},
 		RoleRef:    rbacv1.RoleRef{APIGroup: "rbac.authorization.k8s.io", Kind: "ClusterRole", Name: "openebs-localpv-provisioner"},
 		Subjects:   []rbacv1.Subject{{Kind: "ServiceAccount", Name: "openebs-localpv-provisioner", Namespace: openebsNamespace}},
 	}
@@ -372,7 +374,8 @@ func hostpathStorageClass(name string, cfg *storagev1alpha1.HostpathConfig) *sto
 	}
 	return &storagev1.StorageClass{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
+			Name:   name,
+			Labels: labels("hostpath-sc"),
 			Annotations: map[string]string{
 				"storageclass.kubernetes.io/is-default-class": boolToStr(cfg.IsDefaultClass),
 			},
@@ -391,26 +394,27 @@ func hostpathStorageClass(name string, cfg *storagev1alpha1.HostpathConfig) *sto
 
 func zfsServiceAccount() *corev1.ServiceAccount {
 	return &corev1.ServiceAccount{
-		ObjectMeta: metav1.ObjectMeta{Name: "openebs-zfs-controller", Namespace: openebsNamespace},
+		ObjectMeta: metav1.ObjectMeta{Name: "openebs-zfs-controller", Namespace: openebsNamespace, Labels: labels("zfs-rbac")},
 	}
 }
 
 func zfsClusterRole() *rbacv1.ClusterRole {
 	return &rbacv1.ClusterRole{
-		ObjectMeta: metav1.ObjectMeta{Name: "openebs-zfs-role"},
+		ObjectMeta: metav1.ObjectMeta{Name: "openebs-zfs-role", Labels: labels("zfs-rbac")},
 		Rules: []rbacv1.PolicyRule{
 			{APIGroups: []string{""}, Resources: []string{"nodes", "persistentvolumes"}, Verbs: []string{"get", "list", "watch", "patch", "update"}},
 			{APIGroups: []string{""}, Resources: []string{"persistentvolumeclaims"}, Verbs: []string{"get", "list", "watch", "update"}},
 			{APIGroups: []string{"storage.k8s.io"}, Resources: []string{"storageclasses", "volumeattachments", "csinodes"}, Verbs: []string{"get", "list", "watch"}},
 			{APIGroups: []string{""}, Resources: []string{"events"}, Verbs: []string{"create", "patch", "update"}},
 			{APIGroups: []string{"coordination.k8s.io"}, Resources: []string{"leases"}, Verbs: []string{"get", "watch", "list", "delete", "update", "create"}},
+			{APIGroups: []string{"snapshot.storage.k8s.io"}, Resources: []string{"volumesnapshotclasses", "volumesnapshotcontents", "volumesnapshots"}, Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
 		},
 	}
 }
 
 func zfsClusterRoleBinding() *rbacv1.ClusterRoleBinding {
 	return &rbacv1.ClusterRoleBinding{
-		ObjectMeta: metav1.ObjectMeta{Name: "openebs-zfs-binding"},
+		ObjectMeta: metav1.ObjectMeta{Name: "openebs-zfs-binding", Labels: labels("zfs-rbac")},
 		RoleRef:    rbacv1.RoleRef{APIGroup: "rbac.authorization.k8s.io", Kind: "ClusterRole", Name: "openebs-zfs-role"},
 		Subjects:   []rbacv1.Subject{{Kind: "ServiceAccount", Name: "openebs-zfs-controller", Namespace: openebsNamespace}},
 	}
@@ -564,7 +568,7 @@ func zfsCSIDriver() *storagev1.CSIDriver {
 	attachRequired := true
 	podInfoOnMount := true
 	return &storagev1.CSIDriver{
-		ObjectMeta: metav1.ObjectMeta{Name: zfsCSIDriverName},
+		ObjectMeta: metav1.ObjectMeta{Name: zfsCSIDriverName, Labels: labels("zfs-csidriver")},
 		Spec: storagev1.CSIDriverSpec{
 			AttachRequired: &attachRequired,
 			PodInfoOnMount: &podInfoOnMount,
@@ -581,7 +585,8 @@ func zfsStorageClass(name string, cfg *storagev1alpha1.ZFSConfig) *storagev1.Sto
 	deletePolicy := corev1.PersistentVolumeReclaimDelete
 	return &storagev1.StorageClass{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
+			Name:   name,
+			Labels: labels("zfs-sc"),
 		},
 		Provisioner:       zfsCSIDriverName,
 		ReclaimPolicy:     &deletePolicy,
@@ -597,13 +602,13 @@ func zfsStorageClass(name string, cfg *storagev1alpha1.ZFSConfig) *storagev1.Sto
 
 func rawfileServiceAccount() *corev1.ServiceAccount {
 	return &corev1.ServiceAccount{
-		ObjectMeta: metav1.ObjectMeta{Name: "openebs-rawfile-provisioner", Namespace: openebsNamespace},
+		ObjectMeta: metav1.ObjectMeta{Name: "openebs-rawfile-provisioner", Namespace: openebsNamespace, Labels: labels("rawfile-rbac")},
 	}
 }
 
 func rawfileClusterRole() *rbacv1.ClusterRole {
 	return &rbacv1.ClusterRole{
-		ObjectMeta: metav1.ObjectMeta{Name: "openebs-rawfile-provisioner"},
+		ObjectMeta: metav1.ObjectMeta{Name: "openebs-rawfile-provisioner", Labels: labels("rawfile-rbac")},
 		Rules: []rbacv1.PolicyRule{
 			{APIGroups: []string{""}, Resources: []string{"nodes"}, Verbs: []string{"get", "list", "watch"}},
 			{APIGroups: []string{""}, Resources: []string{"persistentvolumes"}, Verbs: []string{"get", "list", "watch", "create", "delete", "update", "patch"}},
@@ -617,7 +622,7 @@ func rawfileClusterRole() *rbacv1.ClusterRole {
 
 func rawfileClusterRoleBinding() *rbacv1.ClusterRoleBinding {
 	return &rbacv1.ClusterRoleBinding{
-		ObjectMeta: metav1.ObjectMeta{Name: "openebs-rawfile-provisioner"},
+		ObjectMeta: metav1.ObjectMeta{Name: "openebs-rawfile-provisioner", Labels: labels("rawfile-rbac")},
 		RoleRef:    rbacv1.RoleRef{APIGroup: "rbac.authorization.k8s.io", Kind: "ClusterRole", Name: "openebs-rawfile-provisioner"},
 		Subjects:   []rbacv1.Subject{{Kind: "ServiceAccount", Name: "openebs-rawfile-provisioner", Namespace: openebsNamespace}},
 	}
@@ -672,7 +677,8 @@ func rawfileStorageClass(name string, cfg *storagev1alpha1.RawfileConfig) *stora
 	}
 	return &storagev1.StorageClass{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
+			Name:   name,
+			Labels: labels("rawfile-sc"),
 		},
 		Provisioner:       "rawfile.csi.openebs.io",
 		ReclaimPolicy:     &deletePolicy,

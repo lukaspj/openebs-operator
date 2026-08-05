@@ -576,3 +576,161 @@ func TestDeployerAllRBACForAllEngines(t *testing.T) {
 		})
 	}
 }
+
+func TestOwnerReferencesAreSet(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	_ = appsv1.AddToScheme(scheme)
+	_ = rbacv1.AddToScheme(scheme)
+	_ = storagev1.AddToScheme(scheme)
+
+	instance := &storagev1alpha1.OpenEBS{
+		ObjectMeta: metav1.ObjectMeta{Name: "openebs", UID: "test-uid"},
+		Spec: storagev1alpha1.OpenEBSSpec{
+			LVM: &storagev1alpha1.LVMConfig{Enabled: true},
+		},
+	}
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+	d := &Deployer{Client: cl, Scheme: scheme, instance: instance}
+	ctx := context.Background()
+
+	dep := lvmControllerDeployment(instance)
+	if err := d.applyDeployment(ctx, dep); err != nil {
+		t.Fatalf("applyDeployment failed: %v", err)
+	}
+
+	var got appsv1.Deployment
+	if err := cl.Get(ctx, types.NamespacedName{Name: dep.Name, Namespace: dep.Namespace}, &got); err != nil {
+		t.Fatalf("Deployment not found: %v", err)
+	}
+	if len(got.OwnerReferences) != 1 {
+		t.Fatalf("expected 1 owner ref, got %d", len(got.OwnerReferences))
+	}
+	ref := got.OwnerReferences[0]
+	if ref.Kind != "OpenEBS" {
+		t.Errorf("expected owner kind OpenEBS, got %s", ref.Kind)
+	}
+	if ref.Name != "openebs" {
+		t.Errorf("expected owner name openebs, got %s", ref.Name)
+	}
+	if !*ref.Controller {
+		t.Error("expected controller owner ref")
+	}
+	if !*ref.BlockOwnerDeletion {
+		t.Error("expected blockOwnerDeletion")
+	}
+}
+
+func TestCleanupOrphansDeletesUnexpectedResources(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	_ = appsv1.AddToScheme(scheme)
+	_ = rbacv1.AddToScheme(scheme)
+	_ = storagev1.AddToScheme(scheme)
+
+	instance := &storagev1alpha1.OpenEBS{
+		ObjectMeta: metav1.ObjectMeta{Name: "openebs"},
+		Spec: storagev1alpha1.OpenEBSSpec{
+			LVM: &storagev1alpha1.LVMConfig{Enabled: true},
+		},
+	}
+
+	managedLabel := map[string]string{"app.kubernetes.io/managed-by": "openebs-operator"}
+
+	// Create an expected Deployment (LVM controller)
+	expectedDep := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: lvmControllerName, Namespace: openebsNamespace, Labels: managedLabel},
+	}
+	// Create an orphan Deployment (something from a disabled engine)
+	orphanDep := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "orphan-deployment", Namespace: openebsNamespace, Labels: managedLabel},
+	}
+
+	cl := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(expectedDep, orphanDep).
+		Build()
+	d := &Deployer{Client: cl, Scheme: scheme, instance: instance}
+	ctx := context.Background()
+
+	if err := d.cleanupOrphans(ctx); err != nil {
+		t.Fatalf("cleanupOrphans failed: %v", err)
+	}
+
+	// Expected deployment should still exist
+	var gotExpected appsv1.Deployment
+	if err := cl.Get(ctx, types.NamespacedName{Name: lvmControllerName, Namespace: openebsNamespace}, &gotExpected); err != nil {
+		t.Errorf("expected Deployment not found: %v", err)
+	}
+
+	// Orphan deployment should be gone
+	var gotOrphan appsv1.Deployment
+	if err := cl.Get(ctx, types.NamespacedName{Name: "orphan-deployment", Namespace: openebsNamespace}, &gotOrphan); err == nil {
+		t.Error("orphan Deployment was not deleted")
+	}
+}
+
+func TestCleanupOrphansPreservesUnmanagedResources(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	_ = appsv1.AddToScheme(scheme)
+	_ = rbacv1.AddToScheme(scheme)
+	_ = storagev1.AddToScheme(scheme)
+
+	instance := &storagev1alpha1.OpenEBS{
+		ObjectMeta: metav1.ObjectMeta{Name: "openebs"},
+		Spec:       storagev1alpha1.OpenEBSSpec{},
+	}
+
+	// This resource has NO managed-by label — should NOT be deleted
+	unmanagedDep := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "other-deployment", Namespace: openebsNamespace},
+	}
+
+	cl := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(unmanagedDep).
+		Build()
+	d := &Deployer{Client: cl, Scheme: scheme, instance: instance}
+	ctx := context.Background()
+
+	if err := d.cleanupOrphans(ctx); err != nil {
+		t.Fatalf("cleanupOrphans failed: %v", err)
+	}
+
+	// Unmanaged deployment should still exist
+	var got appsv1.Deployment
+	if err := cl.Get(ctx, types.NamespacedName{Name: "other-deployment", Namespace: openebsNamespace}, &got); err != nil {
+		t.Errorf("unmanaged Deployment was deleted: %v", err)
+	}
+}
+
+func TestExpectedResourcesEmptyWhenNoEngines(t *testing.T) {
+	instance := &storagev1alpha1.OpenEBS{
+		Spec: storagev1alpha1.OpenEBSSpec{},
+	}
+	resources := expectedResources(instance)
+	if len(resources) != 0 {
+		t.Errorf("expected 0 resources when no engines enabled, got %d", len(resources))
+	}
+}
+
+func TestExpectedResourcesIncludesEnabledEngines(t *testing.T) {
+	instance := &storagev1alpha1.OpenEBS{
+		Spec: storagev1alpha1.OpenEBSSpec{
+			LVM:      &storagev1alpha1.LVMConfig{Enabled: true},
+			Hostpath: &storagev1alpha1.HostpathConfig{Enabled: true},
+		},
+	}
+	resources := expectedResources(instance)
+	if !resources[lvmControllerName] {
+		t.Error("expected LVM controller in resources")
+	}
+	if !resources[hostpathDeployName] {
+		t.Error("expected hostpath deployment in resources")
+	}
+	if resources[zfsControllerName] {
+		t.Error("ZFS controller should NOT be in resources when disabled")
+	}
+}

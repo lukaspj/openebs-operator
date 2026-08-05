@@ -290,6 +290,10 @@ func (d *Deployer) applyStorageClass(ctx context.Context, sc *storagev1.StorageC
 // a direct Apply since controllerutil.CreateOrUpdate cannot handle
 // CRD schema size due to annotation limits.
 func (d *Deployer) apply(ctx context.Context, obj client.Object) error {
+	if d.instance != nil {
+		obj.SetOwnerReferences(ownerRefs(d.instance))
+	}
+
 	key := types.NamespacedName{Name: obj.GetName(), Namespace: obj.GetNamespace()}
 
 	existing := obj.DeepCopyObject().(client.Object)
@@ -328,4 +332,149 @@ func ownerRefs(instance *storagev1alpha1.OpenEBS) []metav1.OwnerReference {
 	return []metav1.OwnerReference{
 		*metav1.NewControllerRef(instance, storagev1alpha1.GroupVersion.WithKind("OpenEBS")),
 	}
+}
+
+func (d *Deployer) cleanupOrphans(ctx context.Context) error {
+	logger := log.FromContext(ctx)
+	managedLabel := "app.kubernetes.io/managed-by"
+	expected := expectedResources(d.instance)
+
+	var deps appsv1.DeploymentList
+	if err := d.List(ctx, &deps, client.InNamespace(openebsNamespace), client.MatchingLabels{managedLabel: "openebs-operator"}); err != nil {
+		return err
+	}
+	for _, dep := range deps.Items {
+		if !expected[dep.Name] {
+			logger.Info("deleting orphan Deployment", "name", dep.Name)
+			if err := d.Delete(ctx, &dep); err != nil {
+				return err
+			}
+		}
+	}
+
+	var dss appsv1.DaemonSetList
+	if err := d.List(ctx, &dss, client.InNamespace(openebsNamespace), client.MatchingLabels{managedLabel: "openebs-operator"}); err != nil {
+		return err
+	}
+	for _, ds := range dss.Items {
+		if !expected[ds.Name] {
+			logger.Info("deleting orphan DaemonSet", "name", ds.Name)
+			if err := d.Delete(ctx, &ds); err != nil {
+				return err
+			}
+		}
+	}
+
+	var sas corev1.ServiceAccountList
+	if err := d.List(ctx, &sas, client.InNamespace(openebsNamespace), client.MatchingLabels{managedLabel: "openebs-operator"}); err != nil {
+		return err
+	}
+	for _, sa := range sas.Items {
+		if !expected[sa.Name] {
+			logger.Info("deleting orphan ServiceAccount", "name", sa.Name)
+			if err := d.Delete(ctx, &sa); err != nil {
+				return err
+			}
+		}
+	}
+
+	var crs rbacv1.ClusterRoleList
+	if err := d.List(ctx, &crs, client.MatchingLabels{managedLabel: "openebs-operator"}); err != nil {
+		return err
+	}
+	for _, cr := range crs.Items {
+		if !expected[cr.Name] {
+			logger.Info("deleting orphan ClusterRole", "name", cr.Name)
+			if err := d.Delete(ctx, &cr); err != nil {
+				return err
+			}
+		}
+	}
+
+	var crbs rbacv1.ClusterRoleBindingList
+	if err := d.List(ctx, &crbs, client.MatchingLabels{managedLabel: "openebs-operator"}); err != nil {
+		return err
+	}
+	for _, crb := range crbs.Items {
+		if !expected[crb.Name] {
+			logger.Info("deleting orphan ClusterRoleBinding", "name", crb.Name)
+			if err := d.Delete(ctx, &crb); err != nil {
+				return err
+			}
+		}
+	}
+
+	var cds storagev1.CSIDriverList
+	if err := d.List(ctx, &cds, client.MatchingLabels{managedLabel: "openebs-operator"}); err != nil {
+		return err
+	}
+	for _, cd := range cds.Items {
+		if !expected[cd.Name] {
+			logger.Info("deleting orphan CSIDriver", "name", cd.Name)
+			if err := d.Delete(ctx, &cd); err != nil {
+				return err
+			}
+		}
+	}
+
+	var scs storagev1.StorageClassList
+	if err := d.List(ctx, &scs, client.MatchingLabels{managedLabel: "openebs-operator"}); err != nil {
+		return err
+	}
+	for _, sc := range scs.Items {
+		if !expected[sc.Name] {
+			logger.Info("deleting orphan StorageClass", "name", sc.Name)
+			if err := d.Delete(ctx, &sc); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func expectedResources(instance *storagev1alpha1.OpenEBS) map[string]bool {
+	resources := map[string]bool{}
+
+	if instance.Spec.LVM != nil && instance.Spec.LVM.Enabled {
+		resources[lvmControllerName] = true
+		resources[lvmNodeName] = true
+		resources[lvmCSIDriverName] = true
+		resources[lvmSCName] = true
+		resources["openebs-lvm-controller"] = true
+		resources["openebs-lvm-role"] = true
+		resources["openebs-lvm-binding"] = true
+		if instance.Spec.LVM.StorageClassName != "" {
+			resources[instance.Spec.LVM.StorageClassName] = true
+		}
+	}
+	if instance.Spec.Hostpath != nil && instance.Spec.Hostpath.Enabled {
+		resources[hostpathDeployName] = true
+		resources[hostpathSCName] = true
+		resources["openebs-localpv-provisioner"] = true
+		if instance.Spec.Hostpath.StorageClassName != "" {
+			resources[instance.Spec.Hostpath.StorageClassName] = true
+		}
+	}
+	if instance.Spec.ZFS != nil && instance.Spec.ZFS.Enabled {
+		resources[zfsControllerName] = true
+		resources[zfsNodeName] = true
+		resources[zfsCSIDriverName] = true
+		resources[zfsSCName] = true
+		resources["openebs-zfs-controller"] = true
+		resources["openebs-zfs-role"] = true
+		resources["openebs-zfs-binding"] = true
+		if instance.Spec.ZFS.StorageClassName != "" {
+			resources[instance.Spec.ZFS.StorageClassName] = true
+		}
+	}
+	if instance.Spec.Rawfile != nil && instance.Spec.Rawfile.Enabled {
+		resources[rawfileDeployName] = true
+		resources[rawfileSCName] = true
+		resources["openebs-rawfile-provisioner"] = true
+		resources["openebs-rawfile-role"] = true
+		resources["openebs-rawfile-binding"] = true
+	}
+
+	return resources
 }

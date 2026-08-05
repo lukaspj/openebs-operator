@@ -78,6 +78,10 @@ func (r *OpenEBSReconciler) reconcileNormal(ctx context.Context, instance *stora
 		changed = true
 	}
 
+	if err := r.cleanupOrphans(ctx, instance); err != nil {
+		logger.Error(err, "orphan cleanup failed")
+	}
+
 	instance.Status.Conditions = r.buildConditions(instance.Status.Phase, instance.Status.Engines)
 
 	if changed {
@@ -153,6 +157,11 @@ func (r *OpenEBSReconciler) deployEngines(ctx context.Context, instance *storage
 	}
 
 	return engines, nil
+}
+
+func (r *OpenEBSReconciler) cleanupOrphans(ctx context.Context, instance *storagev1alpha1.OpenEBS) error {
+	d := &Deployer{Client: r.Client, Scheme: r.Scheme, instance: instance}
+	return d.cleanupOrphans(ctx)
 }
 
 func (r *OpenEBSReconciler) derivePhase(engines []storagev1alpha1.EngineStatus) storagev1alpha1.OpenEBSPhase {
