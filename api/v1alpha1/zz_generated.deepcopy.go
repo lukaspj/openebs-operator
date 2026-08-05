@@ -108,6 +108,11 @@ func (in *OpenEBSSpec) DeepCopyInto(out *OpenEBSSpec) {
 			(*out)[key] = val
 		}
 	}
+	if in.Images != nil {
+		in, out := &in.Images, &out.Images
+		*out = new(ImageConfig)
+		**out = **in
+	}
 }
 
 // DeepCopy returns a deep copy of OpenEBSSpec.
@@ -143,6 +148,21 @@ func (in *OpenEBSStatus) DeepCopy() *OpenEBSStatus {
 		return nil
 	}
 	out := new(OpenEBSStatus)
+	in.DeepCopyInto(out)
+	return out
+}
+
+// DeepCopyInto copies all properties into another ImageConfig.
+func (in *ImageConfig) DeepCopyInto(out *ImageConfig) {
+	*out = *in
+}
+
+// DeepCopy returns a deep copy of ImageConfig.
+func (in *ImageConfig) DeepCopy() *ImageConfig {
+	if in == nil {
+		return nil
+	}
+	out := new(ImageConfig)
 	in.DeepCopyInto(out)
 	return out
 }

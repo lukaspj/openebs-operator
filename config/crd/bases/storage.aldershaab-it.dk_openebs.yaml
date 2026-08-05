@@ -113,6 +113,25 @@ spec:
                   type: object
                   additionalProperties:
                     type: string
+                images:
+                  type: object
+                  properties:
+                    lvm:
+                      type: string
+                    hostpath:
+                      type: string
+                    zfs:
+                      type: string
+                    rawfile:
+                      type: string
+                    csiProvisioner:
+                      type: string
+                    csiResizer:
+                      type: string
+                    csiSnapshotter:
+                      type: string
+                    csiNodeRegistrar:
+                      type: string
             status:
               type: object
               properties:

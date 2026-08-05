@@ -1,0 +1,41 @@
+name: CRD Validation
+
+on:
+  pull_request:
+    paths:
+      - 'api/v1alpha1/**'
+      - 'config/crd/**'
+
+jobs:
+  crd-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: true
+
+      - name: Install controller-gen
+        run: go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.18.0
+
+      - name: Verify CRD is up to date
+        run: |
+          mkdir -p /tmp/crd-generated
+          controller-gen crd paths="./api/..." output:crd:artifacts:config=/tmp/crd-generated
+          if ! diff -q config/crd/bases/ /tmp/crd-generated/ > /dev/null 2>&1; then
+            echo "::error::CRD manifest is out of date. Run 'make manifests' and commit the result."
+            diff -u config/crd/bases/ /tmp/crd-generated/
+            exit 1
+          fi
+          echo "CRD manifest matches generated output."
+
+      - name: Check for breaking CRD changes
+        if: github.event_name == 'pull_request'
+        run: |
+          BASE_CRD=$(mktemp)
+          git show "origin/${{ github.base_ref }}:config/crd/bases/storage.aldershaab-it.dk_openebs.yaml" > "$BASE_CRD"
+          go run ./hack/crd-breaking-check/ "$BASE_CRD" config/crd/bases/storage.aldershaab-it.dk_openebs.yaml

@@ -18,3 +18,12 @@ spec:
     enabled: false
   mayastor:
     enabled: false
+  images:
+    lvm: ""
+    hostpath: ""
+    zfs: ""
+    rawfile: ""
+    csiProvisioner: ""
+    csiResizer: ""
+    csiSnapshotter: ""
+    csiNodeRegistrar: ""

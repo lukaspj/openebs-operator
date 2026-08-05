@@ -919,3 +919,228 @@ func TestReclaimPolicy(t *testing.T) {
 		t.Error("StorageClass should use Delete reclaim policy")
 	}
 }
+
+func TestResolveImage(t *testing.T) {
+	if got := resolveImage("", "default:v1"); got != "default:v1" {
+		t.Errorf("empty override, expected default:v1, got %s", got)
+	}
+	if got := resolveImage("custom:v2", "default:v1"); got != "custom:v2" {
+		t.Errorf("non-empty override, expected custom:v2, got %s", got)
+	}
+}
+
+func TestDefaultImages(t *testing.T) {
+	instance := &storagev1alpha1.OpenEBS{
+		Spec: storagev1alpha1.OpenEBSSpec{
+			LVM:      &storagev1alpha1.LVMConfig{Enabled: true},
+			ZFS:      &storagev1alpha1.ZFSConfig{Enabled: true},
+			Hostpath: &storagev1alpha1.HostpathConfig{Enabled: true},
+			Rawfile:  &storagev1alpha1.RawfileConfig{Enabled: true},
+		},
+	}
+
+	t.Run("LVM controller uses defaults", func(t *testing.T) {
+		dep := lvmControllerDeployment(instance)
+		images := map[string]string{}
+		for _, c := range dep.Spec.Template.Spec.Containers {
+			images[c.Name] = c.Image
+		}
+		if images["csi-provisioner"] != defaultCSIProvisioner {
+			t.Errorf("csi-provisioner: expected %s, got %s", defaultCSIProvisioner, images["csi-provisioner"])
+		}
+		if images["csi-resizer"] != defaultCSIResizer {
+			t.Errorf("csi-resizer: expected %s, got %s", defaultCSIResizer, images["csi-resizer"])
+		}
+		if images["csi-snapshotter"] != defaultCSISnapshotter {
+			t.Errorf("csi-snapshotter: expected %s, got %s", defaultCSISnapshotter, images["csi-snapshotter"])
+		}
+		if images["lvm-plugin"] != defaultLVMImage {
+			t.Errorf("lvm-plugin: expected %s, got %s", defaultLVMImage, images["lvm-plugin"])
+		}
+	})
+
+	t.Run("LVM node uses defaults", func(t *testing.T) {
+		ds := lvmNodeDaemonSet(instance)
+		images := map[string]string{}
+		for _, c := range ds.Spec.Template.Spec.Containers {
+			images[c.Name] = c.Image
+		}
+		if images["csi-node-driver-registrar"] != defaultCSINodeRegistrar {
+			t.Errorf("csi-node-driver-registrar: expected %s, got %s", defaultCSINodeRegistrar, images["csi-node-driver-registrar"])
+		}
+		if images["lvm-node-plugin"] != defaultLVMImage {
+			t.Errorf("lvm-node-plugin: expected %s, got %s", defaultLVMImage, images["lvm-node-plugin"])
+		}
+	})
+
+	t.Run("hostpath uses defaults", func(t *testing.T) {
+		dep := hostpathDeployment(instance)
+		c := dep.Spec.Template.Spec.Containers[0]
+		if c.Image != defaultHostpathImage {
+			t.Errorf("expected %s, got %s", defaultHostpathImage, c.Image)
+		}
+		env := findEnv(c.Env, "OPENEBS_IO_HELPER_IMAGE")
+		if env == nil || env.Value != defaultHostpathImage {
+			t.Errorf("OPENEBS_IO_HELPER_IMAGE: expected %s", defaultHostpathImage)
+		}
+	})
+
+	t.Run("ZFS controller uses defaults", func(t *testing.T) {
+		dep := zfsControllerDeployment(instance)
+		images := map[string]string{}
+		for _, c := range dep.Spec.Template.Spec.Containers {
+			images[c.Name] = c.Image
+		}
+		if images["csi-provisioner"] != defaultCSIProvisioner {
+			t.Errorf("csi-provisioner: expected %s, got %s", defaultCSIProvisioner, images["csi-provisioner"])
+		}
+		if images["csi-resizer"] != defaultCSIResizer {
+			t.Errorf("csi-resizer: expected %s, got %s", defaultCSIResizer, images["csi-resizer"])
+		}
+		if images["zfs-plugin"] != defaultZFSImage {
+			t.Errorf("zfs-plugin: expected %s, got %s", defaultZFSImage, images["zfs-plugin"])
+		}
+	})
+
+	t.Run("ZFS node uses defaults", func(t *testing.T) {
+		ds := zfsNodeDaemonSet(instance)
+		images := map[string]string{}
+		for _, c := range ds.Spec.Template.Spec.Containers {
+			images[c.Name] = c.Image
+		}
+		if images["csi-node-driver-registrar"] != defaultCSINodeRegistrar {
+			t.Errorf("csi-node-driver-registrar: expected %s, got %s", defaultCSINodeRegistrar, images["csi-node-driver-registrar"])
+		}
+		if images["zfs-node-plugin"] != defaultZFSImage {
+			t.Errorf("zfs-node-plugin: expected %s, got %s", defaultZFSImage, images["zfs-node-plugin"])
+		}
+	})
+
+	t.Run("rawfile uses defaults", func(t *testing.T) {
+		dep := rawfileDeployment(instance)
+		c := dep.Spec.Template.Spec.Containers[0]
+		if c.Image != defaultRawfileImage {
+			t.Errorf("expected %s, got %s", defaultRawfileImage, c.Image)
+		}
+	})
+}
+
+func TestCustomImages(t *testing.T) {
+	custom := &storagev1alpha1.ImageConfig{
+		LVM:              "myreg/lvm:v1.0.0",
+		Hostpath:         "myreg/hostpath:v1.0.0",
+		ZFS:              "myreg/zfs:v1.0.0",
+		Rawfile:          "myreg/rawfile:v1.0.0",
+		CSIProvisioner:   "myreg/csi-provisioner:v1.0.0",
+		CSIResizer:       "myreg/csi-resizer:v1.0.0",
+		CSISnapshotter:   "myreg/csi-snapshotter:v1.0.0",
+		CSINodeRegistrar: "myreg/csi-node-registrar:v1.0.0",
+	}
+
+	instance := &storagev1alpha1.OpenEBS{
+		Spec: storagev1alpha1.OpenEBSSpec{
+			LVM:      &storagev1alpha1.LVMConfig{Enabled: true},
+			ZFS:      &storagev1alpha1.ZFSConfig{Enabled: true},
+			Hostpath: &storagev1alpha1.HostpathConfig{Enabled: true},
+			Rawfile:  &storagev1alpha1.RawfileConfig{Enabled: true},
+			Images:   custom,
+		},
+	}
+
+	t.Run("LVM controller uses custom images", func(t *testing.T) {
+		dep := lvmControllerDeployment(instance)
+		images := map[string]string{}
+		for _, c := range dep.Spec.Template.Spec.Containers {
+			images[c.Name] = c.Image
+		}
+		if images["csi-provisioner"] != custom.CSIProvisioner {
+			t.Errorf("csi-provisioner: expected %s, got %s", custom.CSIProvisioner, images["csi-provisioner"])
+		}
+		if images["csi-resizer"] != custom.CSIResizer {
+			t.Errorf("csi-resizer: expected %s, got %s", custom.CSIResizer, images["csi-resizer"])
+		}
+		if images["csi-snapshotter"] != custom.CSISnapshotter {
+			t.Errorf("csi-snapshotter: expected %s, got %s", custom.CSISnapshotter, images["csi-snapshotter"])
+		}
+		if images["lvm-plugin"] != custom.LVM {
+			t.Errorf("lvm-plugin: expected %s, got %s", custom.LVM, images["lvm-plugin"])
+		}
+	})
+
+	t.Run("ZFS controller uses custom images", func(t *testing.T) {
+		dep := zfsControllerDeployment(instance)
+		images := map[string]string{}
+		for _, c := range dep.Spec.Template.Spec.Containers {
+			images[c.Name] = c.Image
+		}
+		if images["csi-provisioner"] != custom.CSIProvisioner {
+			t.Errorf("csi-provisioner: expected %s, got %s", custom.CSIProvisioner, images["csi-provisioner"])
+		}
+		if images["csi-resizer"] != custom.CSIResizer {
+			t.Errorf("csi-resizer: expected %s, got %s", custom.CSIResizer, images["csi-resizer"])
+		}
+		if images["zfs-plugin"] != custom.ZFS {
+			t.Errorf("zfs-plugin: expected %s, got %s", custom.ZFS, images["zfs-plugin"])
+		}
+	})
+
+	t.Run("hostpath uses custom image", func(t *testing.T) {
+		dep := hostpathDeployment(instance)
+		c := dep.Spec.Template.Spec.Containers[0]
+		if c.Image != custom.Hostpath {
+			t.Errorf("expected %s, got %s", custom.Hostpath, c.Image)
+		}
+	})
+
+	t.Run("rawfile uses custom image", func(t *testing.T) {
+		dep := rawfileDeployment(instance)
+		c := dep.Spec.Template.Spec.Containers[0]
+		if c.Image != custom.Rawfile {
+			t.Errorf("expected %s, got %s", custom.Rawfile, c.Image)
+		}
+	})
+}
+
+func TestPartialImageOverride(t *testing.T) {
+	instance := &storagev1alpha1.OpenEBS{
+		Spec: storagev1alpha1.OpenEBSSpec{
+			LVM:      &storagev1alpha1.LVMConfig{Enabled: true},
+			Hostpath: &storagev1alpha1.HostpathConfig{Enabled: true},
+			Images: &storagev1alpha1.ImageConfig{
+				LVM:      "myreg/lvm:v9.9.9",
+				Hostpath: "myreg/hostpath:v9.9.9",
+			},
+		},
+	}
+
+	t.Run("LVM CSI sidecars fall back to defaults", func(t *testing.T) {
+		dep := lvmControllerDeployment(instance)
+		images := map[string]string{}
+		for _, c := range dep.Spec.Template.Spec.Containers {
+			images[c.Name] = c.Image
+		}
+		if images["csi-provisioner"] != defaultCSIProvisioner {
+			t.Errorf("csi-provisioner should be default, got %s", images["csi-provisioner"])
+		}
+		if images["lvm-plugin"] != "myreg/lvm:v9.9.9" {
+			t.Errorf("lvm-plugin should be overridden, got %s", images["lvm-plugin"])
+		}
+	})
+
+	t.Run("hostpath overridden, defaults for unspecified", func(t *testing.T) {
+		dep := hostpathDeployment(instance)
+		c := dep.Spec.Template.Spec.Containers[0]
+		if c.Image != "myreg/hostpath:v9.9.9" {
+			t.Errorf("expected overridden image, got %s", c.Image)
+		}
+	})
+}
+
+func findEnv(env []corev1.EnvVar, name string) *corev1.EnvVar {
+	for i := range env {
+		if env[i].Name == name {
+			return &env[i]
+		}
+	}
+	return nil
+}

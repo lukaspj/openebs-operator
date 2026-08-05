@@ -71,6 +71,10 @@ type OpenEBSSpec struct {
 	// NodeSelector restricts OpenEBS components to nodes matching the labels.
 	// +optional
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+
+	// Images overrides the default container images for OpenEBS components.
+	// +optional
+	Images *ImageConfig `json:"images,omitempty"`
 }
 
 // HostpathConfig configures the hostpath local PV provisioner.
@@ -157,6 +161,18 @@ type MayastorConfig struct {
 	// CoreAgentResources defines resource requests/limits for the core agent.
 	// +optional
 	CoreAgentResources *ResourceSpec `json:"coreAgentResources,omitempty"`
+}
+
+// ImageConfig overrides container images for OpenEBS components.
+type ImageConfig struct {
+	LVM              string `json:"lvm,omitempty"`
+	Hostpath         string `json:"hostpath,omitempty"`
+	ZFS              string `json:"zfs,omitempty"`
+	Rawfile          string `json:"rawfile,omitempty"`
+	CSIProvisioner   string `json:"csiProvisioner,omitempty"`
+	CSIResizer       string `json:"csiResizer,omitempty"`
+	CSISnapshotter   string `json:"csiSnapshotter,omitempty"`
+	CSINodeRegistrar string `json:"csiNodeRegistrar,omitempty"`
 }
 
 // ResourceSpec defines CPU and memory resources.

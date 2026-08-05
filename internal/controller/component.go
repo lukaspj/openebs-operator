@@ -9,17 +9,23 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// Image tags for engine components.
 const (
-	lvmImage         = "openebs/lvm-driver:v2.12.2"
-	hostpathImage    = "openebs/provisioner-localpv:v4.1.0"
-	zfsImage         = "openebs/zfs-driver:v2.6.0"
-	rawfileImage     = "openebs/rawfile-localpv:v0.8.0"
-	csiProvisioner   = "registry.k8s.io/sig-storage/csi-provisioner:v4.0.1"
-	csiResizer       = "registry.k8s.io/sig-storage/csi-resizer:v1.10.1"
-	csiSnapshotter   = "registry.k8s.io/sig-storage/csi-snapshotter:v7.0.2"
-	csiNodeRegistrar = "registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.10.1"
+	defaultLVMImage         = "openebs/lvm-driver:v2.12.2"
+	defaultHostpathImage    = "openebs/provisioner-localpv:4.5.0"
+	defaultZFSImage         = "openebs/zfs-driver:v2.6.0"
+	defaultRawfileImage     = "openebs/rawfile-localpv:v0.8.0"
+	defaultCSIProvisioner   = "registry.k8s.io/sig-storage/csi-provisioner:v4.0.1"
+	defaultCSIResizer       = "registry.k8s.io/sig-storage/csi-resizer:v1.10.1"
+	defaultCSISnapshotter   = "registry.k8s.io/sig-storage/csi-snapshotter:v7.0.2"
+	defaultCSINodeRegistrar = "registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.10.1"
 )
+
+func resolveImage(override, defaultImage string) string {
+	if override != "" {
+		return override
+	}
+	return defaultImage
+}
 
 func boolPtr(b bool) *bool { return &b }
 
@@ -55,6 +61,14 @@ func lvmClusterRoleBinding() *rbacv1.ClusterRoleBinding {
 }
 
 func lvmControllerDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployment {
+	csiProvisionerImg, csiResizerImg, csiSnapshotterImg, lvmPluginImg := defaultCSIProvisioner, defaultCSIResizer, defaultCSISnapshotter, defaultLVMImage
+	if instance.Spec.Images != nil {
+		csiProvisionerImg = resolveImage(instance.Spec.Images.CSIProvisioner, defaultCSIProvisioner)
+		csiResizerImg = resolveImage(instance.Spec.Images.CSIResizer, defaultCSIResizer)
+		csiSnapshotterImg = resolveImage(instance.Spec.Images.CSISnapshotter, defaultCSISnapshotter)
+		lvmPluginImg = resolveImage(instance.Spec.Images.LVM, defaultLVMImage)
+	}
+
 	labels := labels("lvm-controller")
 	replicas := int32(1)
 	return &appsv1.Deployment{
@@ -73,7 +87,7 @@ func lvmControllerDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployme
 					Containers: []corev1.Container{
 						{
 							Name:  "csi-provisioner",
-							Image: csiProvisioner,
+							Image: csiProvisionerImg,
 							Args: []string{
 								"--csi-address=$(ADDRESS)",
 								"--v=2",
@@ -86,7 +100,7 @@ func lvmControllerDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployme
 						},
 						{
 							Name:  "csi-resizer",
-							Image: csiResizer,
+							Image: csiResizerImg,
 							Args: []string{
 								"--csi-address=$(ADDRESS)",
 								"--v=2",
@@ -98,7 +112,7 @@ func lvmControllerDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployme
 						},
 						{
 							Name:  "csi-snapshotter",
-							Image: csiSnapshotter,
+							Image: csiSnapshotterImg,
 							Args: []string{
 								"--csi-address=$(ADDRESS)",
 								"--v=2",
@@ -110,7 +124,7 @@ func lvmControllerDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployme
 						},
 						{
 							Name:  "lvm-plugin",
-							Image: lvmImage,
+							Image: lvmPluginImg,
 							Args:  []string{"--endpoint=$(CSI_ENDPOINT)", "--nodeid=$(OPENEBS_NODE_ID)"},
 							Env: []corev1.EnvVar{
 								{Name: "OPENEBS_NAMESPACE", Value: openebsNamespace},
@@ -135,6 +149,12 @@ func lvmControllerDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployme
 }
 
 func lvmNodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSet {
+	csiNodeRegistrarImg, lvmPluginImg := defaultCSINodeRegistrar, defaultLVMImage
+	if instance.Spec.Images != nil {
+		csiNodeRegistrarImg = resolveImage(instance.Spec.Images.CSINodeRegistrar, defaultCSINodeRegistrar)
+		lvmPluginImg = resolveImage(instance.Spec.Images.LVM, defaultLVMImage)
+	}
+
 	labels := labels("lvm-node")
 	return &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -151,7 +171,7 @@ func lvmNodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSet {
 					Containers: []corev1.Container{
 						{
 							Name:  "csi-node-driver-registrar",
-							Image: csiNodeRegistrar,
+							Image: csiNodeRegistrarImg,
 							Args: []string{
 								"--v=2",
 								"--csi-address=$(ADDRESS)",
@@ -169,7 +189,7 @@ func lvmNodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSet {
 						},
 						{
 							Name:  "lvm-node-plugin",
-							Image: lvmImage,
+							Image: lvmPluginImg,
 							SecurityContext: &corev1.SecurityContext{
 								Privileged: boolPtr(true),
 								Capabilities: &corev1.Capabilities{
@@ -275,6 +295,11 @@ func hostpathClusterRoleBinding() *rbacv1.ClusterRoleBinding {
 }
 
 func hostpathDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployment {
+	hostpathImg := defaultHostpathImage
+	if instance.Spec.Images != nil {
+		hostpathImg = resolveImage(instance.Spec.Images.Hostpath, defaultHostpathImage)
+	}
+
 	labels := labels("hostpath-provisioner")
 	replicas := int32(1)
 	basePath := "/var/openebs/local"
@@ -297,14 +322,14 @@ func hostpathDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployment {
 					Containers: []corev1.Container{
 						{
 							Name:  "provisioner",
-							Image: hostpathImage,
+							Image: hostpathImg,
 							Env: []corev1.EnvVar{
 								{Name: "NODE_NAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.nodeName"}}},
 								{Name: "OPENEBS_NAMESPACE", Value: openebsNamespace},
 								{Name: "OPENEBS_IO_INSTANCE_ID", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.uid"}}},
 								{Name: "OPENEBS_IO_ENABLE_ANALYTICS", Value: "false"},
 								{Name: "OPENEBS_IO_BASE_PATH", Value: basePath},
-								{Name: "OPENEBS_IO_HELPER_IMAGE", Value: hostpathImage},
+								{Name: "OPENEBS_IO_HELPER_IMAGE", Value: hostpathImg},
 							},
 							LivenessProbe: &corev1.Probe{
 								ProbeHandler: corev1.ProbeHandler{
@@ -373,6 +398,13 @@ func zfsClusterRoleBinding() *rbacv1.ClusterRoleBinding {
 }
 
 func zfsControllerDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployment {
+	csiProvisionerImg, csiResizerImg, zfsPluginImg := defaultCSIProvisioner, defaultCSIResizer, defaultZFSImage
+	if instance.Spec.Images != nil {
+		csiProvisionerImg = resolveImage(instance.Spec.Images.CSIProvisioner, defaultCSIProvisioner)
+		csiResizerImg = resolveImage(instance.Spec.Images.CSIResizer, defaultCSIResizer)
+		zfsPluginImg = resolveImage(instance.Spec.Images.ZFS, defaultZFSImage)
+	}
+
 	labels := labels("zfs-controller")
 	replicas := int32(1)
 	return &appsv1.Deployment{
@@ -391,7 +423,7 @@ func zfsControllerDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployme
 					Containers: []corev1.Container{
 						{
 							Name:  "csi-provisioner",
-							Image: csiProvisioner,
+							Image: csiProvisionerImg,
 							Args:  []string{"--csi-address=$(ADDRESS)", "--v=2"},
 							Env:   []corev1.EnvVar{{Name: "ADDRESS", Value: "/var/lib/csi/sockets/pluginproxy/csi.sock"}},
 							VolumeMounts: []corev1.VolumeMount{
@@ -400,7 +432,7 @@ func zfsControllerDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployme
 						},
 						{
 							Name:  "csi-resizer",
-							Image: csiResizer,
+							Image: csiResizerImg,
 							Args:  []string{"--csi-address=$(ADDRESS)", "--v=2"},
 							Env:   []corev1.EnvVar{{Name: "ADDRESS", Value: "/var/lib/csi/sockets/pluginproxy/csi.sock"}},
 							VolumeMounts: []corev1.VolumeMount{
@@ -409,7 +441,7 @@ func zfsControllerDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployme
 						},
 						{
 							Name:  "zfs-plugin",
-							Image: zfsImage,
+							Image: zfsPluginImg,
 							Args:  []string{"--endpoint=$(CSI_ENDPOINT)", "--nodeid=$(OPENEBS_NODE_ID)"},
 							Env: []corev1.EnvVar{
 								{Name: "OPENEBS_NAMESPACE", Value: openebsNamespace},
@@ -431,6 +463,12 @@ func zfsControllerDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployme
 }
 
 func zfsNodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSet {
+	csiNodeRegistrarImg, zfsPluginImg := defaultCSINodeRegistrar, defaultZFSImage
+	if instance.Spec.Images != nil {
+		csiNodeRegistrarImg = resolveImage(instance.Spec.Images.CSINodeRegistrar, defaultCSINodeRegistrar)
+		zfsPluginImg = resolveImage(instance.Spec.Images.ZFS, defaultZFSImage)
+	}
+
 	labels := labels("zfs-node")
 	return &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -447,7 +485,7 @@ func zfsNodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSet {
 					Containers: []corev1.Container{
 						{
 							Name:  "csi-node-driver-registrar",
-							Image: csiNodeRegistrar,
+							Image: csiNodeRegistrarImg,
 							Args: []string{
 								"--v=2",
 								"--csi-address=$(ADDRESS)",
@@ -465,7 +503,7 @@ func zfsNodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSet {
 						},
 						{
 							Name:  "zfs-node-plugin",
-							Image: zfsImage,
+							Image: zfsPluginImg,
 							SecurityContext: &corev1.SecurityContext{
 								Privileged: boolPtr(true),
 								Capabilities: &corev1.Capabilities{
@@ -564,6 +602,11 @@ func rawfileClusterRoleBinding() *rbacv1.ClusterRoleBinding {
 }
 
 func rawfileDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployment {
+	rawfileImg := defaultRawfileImage
+	if instance.Spec.Images != nil {
+		rawfileImg = resolveImage(instance.Spec.Images.Rawfile, defaultRawfileImage)
+	}
+
 	labels := labels("rawfile-provisioner")
 	replicas := int32(1)
 	basePath := "/var/openebs/rawfile"
@@ -586,7 +629,7 @@ func rawfileDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployment {
 					Containers: []corev1.Container{
 						{
 							Name:  "rawfile-provisioner",
-							Image: rawfileImage,
+							Image: rawfileImg,
 							Env: []corev1.EnvVar{
 								{Name: "OPENEBS_NAMESPACE", Value: openebsNamespace},
 								{Name: "OPENEBS_IO_BASE_PATH", Value: basePath},
