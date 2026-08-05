@@ -125,7 +125,7 @@ func lvmControllerDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployme
 						{
 							Name:  "lvm-plugin",
 							Image: lvmPluginImg,
-							Args:  []string{"--endpoint=$(CSI_ENDPOINT)", "--nodeid=$(OPENEBS_NODE_ID)"},
+							Args:  []string{"--plugin-type=controller", "--endpoint=$(CSI_ENDPOINT)", "--nodeid=$(OPENEBS_NODE_ID)"},
 							Env: []corev1.EnvVar{
 								{Name: "OPENEBS_NAMESPACE", Value: openebsNamespace},
 								{Name: "CSI_ENDPOINT", Value: "unix:///var/lib/csi/sockets/pluginproxy/csi.sock"},
@@ -197,7 +197,7 @@ func lvmNodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSet {
 								},
 								AllowPrivilegeEscalation: boolPtr(true),
 							},
-							Args: []string{"--endpoint=$(CSI_ENDPOINT)", "--nodeid=$(OPENEBS_NODE_ID)"},
+							Args: []string{"--plugin-type=node", "--endpoint=$(CSI_ENDPOINT)", "--nodeid=$(OPENEBS_NODE_ID)"},
 							Env: []corev1.EnvVar{
 								{Name: "OPENEBS_NODE_ID", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.nodeName"}}},
 								{Name: "OPENEBS_NAMESPACE", Value: openebsNamespace},
@@ -442,7 +442,7 @@ func zfsControllerDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployme
 						{
 							Name:  "zfs-plugin",
 							Image: zfsPluginImg,
-							Args:  []string{"--endpoint=$(CSI_ENDPOINT)", "--nodeid=$(OPENEBS_NODE_ID)"},
+							Args:  []string{"--plugin-type=controller", "--endpoint=$(CSI_ENDPOINT)", "--nodeid=$(OPENEBS_NODE_ID)"},
 							Env: []corev1.EnvVar{
 								{Name: "OPENEBS_NAMESPACE", Value: openebsNamespace},
 								{Name: "CSI_ENDPOINT", Value: "unix:///var/lib/csi/sockets/pluginproxy/csi.sock"},
@@ -511,7 +511,7 @@ func zfsNodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSet {
 								},
 								AllowPrivilegeEscalation: boolPtr(true),
 							},
-							Args: []string{"--endpoint=$(CSI_ENDPOINT)", "--nodeid=$(OPENEBS_NODE_ID)"},
+							Args: []string{"--plugin-type=node", "--endpoint=$(CSI_ENDPOINT)", "--nodeid=$(OPENEBS_NODE_ID)"},
 							Env: []corev1.EnvVar{
 								{Name: "OPENEBS_NODE_ID", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.nodeName"}}},
 								{Name: "OPENEBS_NAMESPACE", Value: openebsNamespace},
