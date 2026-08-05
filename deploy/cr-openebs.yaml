@@ -1,0 +1,20 @@
+apiVersion: storage.aldershaab-it.dk/v1alpha1
+kind: OpenEBS
+metadata:
+  name: openebs
+spec:
+  lvm:
+    enabled: true
+    storageClassName: openebs-lvm
+    volumeGroup: lvmvg
+  hostpath:
+    enabled: true
+    storageClassName: openebs-hostpath
+    isDefaultClass: true
+    basePath: /var/openebs/local
+  zfs:
+    enabled: false
+  rawfile:
+    enabled: false
+  mayastor:
+    enabled: false

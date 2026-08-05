@@ -1,0 +1,11 @@
+bin/
+cover.out
+release/
+*.swp
+*.swo
+*~
+.DS_Store
+.env
+*.env
+kubeconfig
+*.kubeconfig

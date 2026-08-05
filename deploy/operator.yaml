@@ -1,0 +1,339 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: openebs.storage.aldershaab-it.dk
+spec:
+  group: storage.aldershaab-it.dk
+  names:
+    kind: OpenEBS
+    listKind: OpenEBSList
+    plural: openebs
+    singular: openebs
+  scope: Cluster
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      subresources:
+        status: {}
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                hostpath:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                    basePath:
+                      type: string
+                      default: "/var/openebs/local"
+                    isDefaultClass:
+                      type: boolean
+                    storageClassName:
+                      type: string
+                      default: "openebs-hostpath"
+                  required:
+                    - enabled
+                lvm:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                    storageClassName:
+                      type: string
+                      default: "openebs-lvm"
+                    isDefaultClass:
+                      type: boolean
+                    volumeGroup:
+                      type: string
+                      default: "lvmvg"
+                  required:
+                    - enabled
+                zfs:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                    storageClassName:
+                      type: string
+                      default: "openebs-zfs"
+                    poolName:
+                      type: string
+                      default: "zfspool"
+                  required:
+                    - enabled
+                rawfile:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                    basePath:
+                      type: string
+                      default: "/var/openebs/rawfile"
+                  required:
+                    - enabled
+                mayastor:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                    etcdReplicaCount:
+                      type: integer
+                      default: 3
+                    ioEngineResources:
+                      type: object
+                      properties:
+                        cpu:
+                          type: string
+                        memory:
+                          type: string
+                        hugepages2Mi:
+                          type: string
+                    coreAgentResources:
+                      type: object
+                      properties:
+                        cpu:
+                          type: string
+                        memory:
+                          type: string
+                        hugepages2Mi:
+                          type: string
+                  required:
+                    - enabled
+                imagePullSecrets:
+                  type: array
+                  items:
+                    type: string
+                nodeSelector:
+                  type: object
+                  additionalProperties:
+                    type: string
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                  enum:
+                    - Pending
+                    - Installing
+                    - Running
+                    - Degraded
+                    - Failed
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                engines:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                        enum:
+                          - hostpath
+                          - lvm
+                          - zfs
+                          - rawfile
+                          - mayastor
+                      phase:
+                        type: string
+                      version:
+                        type: string
+                      message:
+                        type: string
+                    required:
+                      - name
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openebs-operator-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: openebs-operator-controller-manager
+  namespace: openebs-operator-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: openebs-operator-manager-role
+rules:
+  - apiGroups:
+      - storage.aldershaab-it.dk
+    resources:
+      - openebs
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - storage.aldershaab-it.dk
+    resources:
+      - openebs/finalizers
+    verbs:
+      - update
+  - apiGroups:
+      - storage.aldershaab-it.dk
+    resources:
+      - openebs/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - ""
+    resources:
+      - namespaces
+      - serviceaccounts
+      - configmaps
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - apps
+    resources:
+      - deployments
+      - daemonsets
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - rbac.authorization.k8s.io
+    resources:
+      - clusterroles
+      - clusterrolebindings
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - storage.k8s.io
+    resources:
+      - csidrivers
+      - storageclasses
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - apiextensions.k8s.io
+    resources:
+      - customresourcedefinitions
+    verbs:
+      - create
+      - get
+      - list
+      - patch
+      - update
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: openebs-operator-manager-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: openebs-operator-manager-role
+subjects:
+  - kind: ServiceAccount
+    name: openebs-operator-controller-manager
+    namespace: openebs-operator-system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openebs-operator-controller-manager
+  namespace: openebs-operator-system
+  labels:
+    app.kubernetes.io/name: openebs-operator
+    app.kubernetes.io/component: manager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: openebs-operator
+      app.kubernetes.io/component: manager
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: openebs-operator
+        app.kubernetes.io/component: manager
+    spec:
+      serviceAccountName: openebs-operator-controller-manager
+      containers:
+        - name: manager
+          image: ghcr.io/aldershaab-it/openebs-operator:latest
+          imagePullPolicy: IfNotPresent
+          args:
+            - --health-probe-bind-address=:8081
+            - --metrics-bind-address=:8080
+            - --leader-elect=false
+          ports:
+            - containerPort: 8080
+              name: metrics
+              protocol: TCP
+            - containerPort: 8081
+              name: health
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
