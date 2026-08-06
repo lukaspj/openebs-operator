@@ -222,7 +222,7 @@ func lvmNodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSet {
 								},
 								AllowPrivilegeEscalation: boolPtr(true),
 							},
-							Args: []string{"--plugin=node", "--endpoint=$(CSI_ENDPOINT)", "--nodeid=$(OPENEBS_NODE_ID)"},
+							Args: []string{"--plugin=agent", "--endpoint=$(CSI_ENDPOINT)", "--nodeid=$(OPENEBS_NODE_ID)"},
 							Env: []corev1.EnvVar{
 								{Name: "OPENEBS_NODE_ID", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.nodeName"}}},
 								{Name: "OPENEBS_NAMESPACE", Value: openebsNamespace},
