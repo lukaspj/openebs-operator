@@ -1002,8 +1002,8 @@ func TestDefaultImages(t *testing.T) {
 			t.Errorf("expected %s, got %s", defaultHostpathImage, c.Image)
 		}
 		env := findEnv(c.Env, "OPENEBS_IO_HELPER_IMAGE")
-		if env == nil || env.Value != defaultHostpathImage {
-			t.Errorf("OPENEBS_IO_HELPER_IMAGE: expected %s", defaultHostpathImage)
+		if env == nil || env.Value != defaultHelperImage {
+			t.Errorf("OPENEBS_IO_HELPER_IMAGE: expected %s", defaultHelperImage)
 		}
 	})
 

@@ -7,7 +7,6 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 	"k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 const (
@@ -15,6 +14,7 @@ const (
 	defaultHostpathImage    = "openebs/provisioner-localpv:4.5.0"
 	defaultZFSImage         = "openebs/zfs-driver:2.10.1"
 	defaultRawfileImage     = "openebs/rawfile-localpv:0.14.1"
+	defaultHelperImage      = "openebs/linux-utils:4.5.0"
 	defaultCSIProvisioner   = "registry.k8s.io/sig-storage/csi-provisioner:v4.0.1"
 	defaultCSIResizer       = "registry.k8s.io/sig-storage/csi-resizer:v1.10.1"
 	defaultCSISnapshotter   = "registry.k8s.io/sig-storage/csi-snapshotter:v7.0.2"
@@ -356,8 +356,14 @@ func hostpathDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployment {
 						{
 							Name:  "provisioner",
 							Image: hostpathImg,
-							Ports: []corev1.ContainerPort{
-								{Name: "healthz", ContainerPort: 8081, Protocol: corev1.ProtocolTCP},
+							LivenessProbe: &corev1.Probe{
+								ProbeHandler: corev1.ProbeHandler{
+									Exec: &corev1.ExecAction{
+										Command: []string{"sh", "-c", "test `pgrep -c \"^provisioner-loc.*\"` = 1"},
+									},
+								},
+								InitialDelaySeconds: 30,
+								PeriodSeconds:       60,
 							},
 							Env: []corev1.EnvVar{
 								{Name: "NODE_NAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.nodeName"}}},
@@ -366,27 +372,11 @@ func hostpathDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployment {
 								{Name: "OPENEBS_IO_ENABLE_ANALYTICS", Value: "false"},
 								{Name: "OPENEBS_IO_BASE_PATH", Value: basePath},
 								{Name: "OPENEBS_IO_WORKER_THREADS", Value: "1"},
-								{Name: "OPENEBS_IO_IMAGE_PULL_POLICY", Value: "IfNotPresent"},
-								{Name: "OPENEBS_IO_HELPER_IMAGE", Value: hostpathImg},
+								{Name: "OPENEBS_IO_HELPER_IMAGE", Value: defaultHelperImage},
 								{Name: "OPENEBS_IO_HELPER_POD_HOST_NETWORK", Value: "false"},
 								{Name: "OPENEBS_IO_INSTALLER_TYPE", Value: "openebs-operator-helperpod"},
-								{Name: "OPENEBS_IO_HELPER_POD_TIMEOUT_SECS", Value: "60"},
+								{Name: "OPENEBS_IO_HELPER_POD_TIMEOUT_SECS", Value: "120"},
 								{Name: "LEADER_ELECTION_ENABLED", Value: "true"},
-								{Name: "OPENEBS_IO_HEALTH_PROBE_BIND_ADDRESS", Value: ":8081"},
-							},
-							LivenessProbe: &corev1.Probe{
-								ProbeHandler: corev1.ProbeHandler{
-									HTTPGet: &corev1.HTTPGetAction{Path: "/healthz", Port: intstr.FromString("healthz")},
-								},
-								InitialDelaySeconds: 30,
-								PeriodSeconds:       60,
-							},
-							ReadinessProbe: &corev1.Probe{
-								ProbeHandler: corev1.ProbeHandler{
-									HTTPGet: &corev1.HTTPGetAction{Path: "/readyz", Port: intstr.FromString("healthz")},
-								},
-								InitialDelaySeconds: 10,
-								PeriodSeconds:       30,
 							},
 						},
 					},
