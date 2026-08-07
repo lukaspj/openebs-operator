@@ -6,7 +6,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	storagev1 "k8s.io/api/storage/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 const (
@@ -307,6 +308,7 @@ func hostpathClusterRole() *rbacv1.ClusterRole {
 		ObjectMeta: metav1.ObjectMeta{Name: "openebs-localpv-provisioner", Labels: labels("hostpath-rbac")},
 		Rules: []rbacv1.PolicyRule{
 			{APIGroups: []string{""}, Resources: []string{"nodes"}, Verbs: []string{"get", "list", "watch"}},
+			{APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get", "list"}},
 			{APIGroups: []string{""}, Resources: []string{"persistentvolumes"}, Verbs: []string{"get", "list", "watch", "create", "delete", "update", "patch"}},
 			{APIGroups: []string{""}, Resources: []string{"persistentvolumeclaims"}, Verbs: []string{"get", "list", "watch", "update"}},
 			{APIGroups: []string{"storage.k8s.io"}, Resources: []string{"storageclasses"}, Verbs: []string{"get", "list", "watch"}},
@@ -330,7 +332,7 @@ func hostpathDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployment {
 		hostpathImg = resolveImage(instance.Spec.Images.Hostpath, defaultHostpathImage)
 	}
 
-	labels := labels("hostpath-provisioner")
+	lbls := labels("hostpath-provisioner")
 	replicas := int32(1)
 	basePath := "/var/openebs/local"
 	if instance.Spec.Hostpath != nil && instance.Spec.Hostpath.BasePath != "" {
@@ -340,33 +342,51 @@ func hostpathDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployment {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      hostpathDeployName,
 			Namespace: openebsNamespace,
-			Labels:    labels,
+			Labels:    lbls,
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: &replicas,
-			Selector: &metav1.LabelSelector{MatchLabels: labels},
+			Replicas:  &replicas,
+			Strategy:  appsv1.DeploymentStrategy{Type: appsv1.RecreateDeploymentStrategyType},
+			Selector:  &metav1.LabelSelector{MatchLabels: lbls},
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{Labels: labels},
+				ObjectMeta: metav1.ObjectMeta{Labels: lbls},
 				Spec: corev1.PodSpec{
 					ServiceAccountName: "openebs-localpv-provisioner",
 					Containers: []corev1.Container{
 						{
 							Name:  "provisioner",
 							Image: hostpathImg,
+							Ports: []corev1.ContainerPort{
+								{Name: "healthz", ContainerPort: 8081, Protocol: corev1.ProtocolTCP},
+							},
 							Env: []corev1.EnvVar{
 								{Name: "NODE_NAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.nodeName"}}},
-								{Name: "OPENEBS_NAMESPACE", Value: openebsNamespace},
-								{Name: "OPENEBS_IO_INSTANCE_ID", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.uid"}}},
+								{Name: "OPENEBS_NAMESPACE", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}}},
+								{Name: "OPENEBS_SERVICE_ACCOUNT", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.serviceAccountName"}}},
 								{Name: "OPENEBS_IO_ENABLE_ANALYTICS", Value: "false"},
 								{Name: "OPENEBS_IO_BASE_PATH", Value: basePath},
+								{Name: "OPENEBS_IO_WORKER_THREADS", Value: "1"},
+								{Name: "OPENEBS_IO_IMAGE_PULL_POLICY", Value: "IfNotPresent"},
 								{Name: "OPENEBS_IO_HELPER_IMAGE", Value: hostpathImg},
+								{Name: "OPENEBS_IO_HELPER_POD_HOST_NETWORK", Value: "false"},
+								{Name: "OPENEBS_IO_INSTALLER_TYPE", Value: "openebs-operator-helperpod"},
+								{Name: "OPENEBS_IO_HELPER_POD_TIMEOUT_SECS", Value: "60"},
+								{Name: "LEADER_ELECTION_ENABLED", Value: "true"},
+								{Name: "OPENEBS_IO_HEALTH_PROBE_BIND_ADDRESS", Value: ":8081"},
 							},
 							LivenessProbe: &corev1.Probe{
 								ProbeHandler: corev1.ProbeHandler{
-									Exec: &corev1.ExecAction{Command: []string{"pgrep", "provisioner"}},
+									HTTPGet: &corev1.HTTPGetAction{Path: "/healthz", Port: intstr.FromString("healthz")},
 								},
 								InitialDelaySeconds: 30,
 								PeriodSeconds:       60,
+							},
+							ReadinessProbe: &corev1.Probe{
+								ProbeHandler: corev1.ProbeHandler{
+									HTTPGet: &corev1.HTTPGetAction{Path: "/readyz", Port: intstr.FromString("healthz")},
+								},
+								InitialDelaySeconds: 10,
+								PeriodSeconds:       30,
 							},
 						},
 					},
@@ -640,11 +660,11 @@ func rawfileClusterRole() *rbacv1.ClusterRole {
 		ObjectMeta: metav1.ObjectMeta{Name: "openebs-rawfile-provisioner", Labels: labels("rawfile-rbac")},
 		Rules: []rbacv1.PolicyRule{
 			{APIGroups: []string{""}, Resources: []string{"nodes"}, Verbs: []string{"get", "list", "watch"}},
+			{APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get", "list"}},
 			{APIGroups: []string{""}, Resources: []string{"persistentvolumes"}, Verbs: []string{"get", "list", "watch", "create", "delete", "update", "patch"}},
 			{APIGroups: []string{""}, Resources: []string{"persistentvolumeclaims"}, Verbs: []string{"get", "list", "watch", "update"}},
 			{APIGroups: []string{"storage.k8s.io"}, Resources: []string{"storageclasses"}, Verbs: []string{"get", "list", "watch"}},
 			{APIGroups: []string{""}, Resources: []string{"events"}, Verbs: []string{"create", "update", "patch"}},
-			{APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get", "list", "watch"}},
 			{APIGroups: []string{"coordination.k8s.io"}, Resources: []string{"leases"}, Verbs: []string{"get", "watch", "list", "delete", "update", "create"}},
 		},
 	}
@@ -677,8 +697,9 @@ func rawfileDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployment {
 			Labels:    labels,
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: &replicas,
-			Selector: &metav1.LabelSelector{MatchLabels: labels},
+			Replicas:  &replicas,
+			Strategy:  appsv1.DeploymentStrategy{Type: appsv1.RecreateDeploymentStrategyType},
+			Selector:  &metav1.LabelSelector{MatchLabels: labels},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{Labels: labels},
 				Spec: corev1.PodSpec{
@@ -688,7 +709,11 @@ func rawfileDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployment {
 							Name:  "rawfile-provisioner",
 							Image: rawfileImg,
 							Env: []corev1.EnvVar{
-								{Name: "OPENEBS_NAMESPACE", Value: openebsNamespace},
+								{Name: "NODE_NAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.nodeName"}}},
+								{Name: "OPENEBS_NAMESPACE", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}}},
+								{Name: "OPENEBS_SERVICE_ACCOUNT", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.serviceAccountName"}}},
+								{Name: "OPENEBS_IO_INSTANCE_ID", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.uid"}}},
+								{Name: "OPENEBS_IO_ENABLE_ANALYTICS", Value: "false"},
 								{Name: "OPENEBS_IO_BASE_PATH", Value: basePath},
 							},
 						},
