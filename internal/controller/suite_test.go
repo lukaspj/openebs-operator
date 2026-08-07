@@ -294,8 +294,8 @@ func TestE2E_HostpathCustomBasePath(t *testing.T) {
 	if err := cl.Get(ctx, types.NamespacedName{Name: hostpathSCName}, sc); err != nil {
 		t.Fatalf("hostpath SC: %v", err)
 	}
-	if sc.Parameters["basePath"] != "/mnt/data" {
-		t.Errorf("expected basePath=/mnt/data, got %s", sc.Parameters["basePath"])
+	if sc.Parameters["BasePath"] != "/mnt/data" {
+		t.Errorf("expected BasePath=/mnt/data, got %s", sc.Parameters["BasePath"])
 	}
 }
 

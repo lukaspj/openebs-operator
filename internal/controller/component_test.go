@@ -136,6 +136,9 @@ func TestLVMStorageClass(t *testing.T) {
 		if sc.Parameters["volgroup"] != "lvmvg" {
 			t.Errorf("expected default vg lvmvg, got %s", sc.Parameters["volgroup"])
 		}
+		if sc.AllowVolumeExpansion == nil || !*sc.AllowVolumeExpansion {
+			t.Error("AllowVolumeExpansion should be true")
+		}
 	})
 
 	t.Run("custom volume group", func(t *testing.T) {
@@ -214,8 +217,11 @@ func TestHostpathStorageClass(t *testing.T) {
 	if sc.Provisioner != "openebs.io/local" {
 		t.Errorf("expected provisioner openebs.io/local, got %s", sc.Provisioner)
 	}
-	if sc.Parameters["basePath"] != "/data" {
-		t.Errorf("expected basePath /data, got %s", sc.Parameters["basePath"])
+	if sc.Parameters["BasePath"] != "/data" {
+		t.Errorf("expected BasePath /data, got %s", sc.Parameters["BasePath"])
+	}
+	if sc.AllowVolumeExpansion == nil || !*sc.AllowVolumeExpansion {
+		t.Error("AllowVolumeExpansion should be true")
 	}
 }
 
@@ -416,6 +422,9 @@ func assertStorageClass(t *testing.T, sc *storagev1.StorageClass, name, provisio
 	if sc.Provisioner != provisioner {
 		t.Errorf("provisioner: want %s, got %s", provisioner, sc.Provisioner)
 	}
+	if sc.AllowVolumeExpansion == nil || !*sc.AllowVolumeExpansion {
+		t.Errorf("%s: AllowVolumeExpansion must be true", name)
+	}
 }
 
 func assertClusterRole(t *testing.T, cr *rbacv1.ClusterRole, name string, ruleCount int) {
@@ -563,6 +572,9 @@ func TestZFSStorageClass(t *testing.T) {
 		if sc.Parameters["fstype"] != "zfs" {
 			t.Errorf("expected fstype zfs, got %s", sc.Parameters["fstype"])
 		}
+		if sc.AllowVolumeExpansion == nil || !*sc.AllowVolumeExpansion {
+			t.Error("AllowVolumeExpansion should be true")
+		}
 	})
 
 	t.Run("custom pool name", func(t *testing.T) {
@@ -585,6 +597,9 @@ func TestRawfileStorageClass(t *testing.T) {
 		}
 		if sc.Parameters["basePath"] != "/var/openebs/rawfile" {
 			t.Errorf("expected default basePath /var/openebs/rawfile, got %s", sc.Parameters["basePath"])
+		}
+		if sc.AllowVolumeExpansion == nil || !*sc.AllowVolumeExpansion {
+			t.Error("AllowVolumeExpansion should be true")
 		}
 	})
 

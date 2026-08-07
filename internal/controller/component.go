@@ -273,6 +273,7 @@ func lvmStorageClass(name string, cfg *storagev1alpha1.LVMConfig) *storagev1.Sto
 		vgName = cfg.VolumeGroup
 	}
 	deletePolicy := corev1.PersistentVolumeReclaimDelete
+	allowExpansion := true
 	sc := &storagev1.StorageClass{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   name,
@@ -281,9 +282,10 @@ func lvmStorageClass(name string, cfg *storagev1alpha1.LVMConfig) *storagev1.Sto
 				"storageclass.kubernetes.io/is-default-class": boolToStr(cfg.IsDefaultClass),
 			},
 		},
-		Provisioner:       lvmCSIDriverName,
-		ReclaimPolicy:     &deletePolicy,
-		VolumeBindingMode: &volumeBindingWaitForFirstConsumer,
+		Provisioner:        lvmCSIDriverName,
+		ReclaimPolicy:      &deletePolicy,
+		VolumeBindingMode:  &volumeBindingWaitForFirstConsumer,
+		AllowVolumeExpansion: &allowExpansion,
 		Parameters: map[string]string{
 			"storage":  "lvm",
 			"volgroup": vgName,
@@ -309,6 +311,7 @@ func hostpathClusterRole() *rbacv1.ClusterRole {
 			{APIGroups: []string{""}, Resources: []string{"persistentvolumeclaims"}, Verbs: []string{"get", "list", "watch", "update"}},
 			{APIGroups: []string{"storage.k8s.io"}, Resources: []string{"storageclasses"}, Verbs: []string{"get", "list", "watch"}},
 			{APIGroups: []string{""}, Resources: []string{"events"}, Verbs: []string{"create", "update", "patch"}},
+			{APIGroups: []string{"coordination.k8s.io"}, Resources: []string{"leases"}, Verbs: []string{"get", "watch", "list", "delete", "update", "create"}},
 		},
 	}
 }
@@ -375,6 +378,7 @@ func hostpathDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployment {
 
 func hostpathStorageClass(name string, cfg *storagev1alpha1.HostpathConfig) *storagev1.StorageClass {
 	deletePolicy := corev1.PersistentVolumeReclaimDelete
+	allowExpansion := true
 	basePath := "/var/openebs/local"
 	if cfg.BasePath != "" {
 		basePath = cfg.BasePath
@@ -387,12 +391,13 @@ func hostpathStorageClass(name string, cfg *storagev1alpha1.HostpathConfig) *sto
 				"storageclass.kubernetes.io/is-default-class": boolToStr(cfg.IsDefaultClass),
 			},
 		},
-		Provisioner:       "openebs.io/local",
-		ReclaimPolicy:     &deletePolicy,
-		VolumeBindingMode: &volumeBindingWaitForFirstConsumer,
+		Provisioner:        "openebs.io/local",
+		ReclaimPolicy:      &deletePolicy,
+		VolumeBindingMode:  &volumeBindingWaitForFirstConsumer,
+		AllowVolumeExpansion: &allowExpansion,
 		Parameters: map[string]string{
 			"storage":  "hostpath",
-			"basePath": basePath,
+			"BasePath": basePath,
 		},
 	}
 }
@@ -600,14 +605,16 @@ func zfsStorageClass(name string, cfg *storagev1alpha1.ZFSConfig) *storagev1.Sto
 		poolName = cfg.PoolName
 	}
 	deletePolicy := corev1.PersistentVolumeReclaimDelete
+	allowExpansion := true
 	return &storagev1.StorageClass{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   name,
 			Labels: labels("zfs-sc"),
 		},
-		Provisioner:       zfsCSIDriverName,
-		ReclaimPolicy:     &deletePolicy,
-		VolumeBindingMode: &volumeBindingWaitForFirstConsumer,
+		Provisioner:        zfsCSIDriverName,
+		ReclaimPolicy:      &deletePolicy,
+		VolumeBindingMode:  &volumeBindingWaitForFirstConsumer,
+		AllowVolumeExpansion: &allowExpansion,
 		Parameters: map[string]string{
 			"poolname": poolName,
 			"fstype":   "zfs",
@@ -633,6 +640,7 @@ func rawfileClusterRole() *rbacv1.ClusterRole {
 			{APIGroups: []string{"storage.k8s.io"}, Resources: []string{"storageclasses"}, Verbs: []string{"get", "list", "watch"}},
 			{APIGroups: []string{""}, Resources: []string{"events"}, Verbs: []string{"create", "update", "patch"}},
 			{APIGroups: []string{""}, Resources: []string{"pods"}, Verbs: []string{"get", "list", "watch"}},
+			{APIGroups: []string{"coordination.k8s.io"}, Resources: []string{"leases"}, Verbs: []string{"get", "watch", "list", "delete", "update", "create"}},
 		},
 	}
 }
@@ -688,6 +696,7 @@ func rawfileDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployment {
 
 func rawfileStorageClass(name string, cfg *storagev1alpha1.RawfileConfig) *storagev1.StorageClass {
 	deletePolicy := corev1.PersistentVolumeReclaimDelete
+	allowExpansion := true
 	basePath := "/var/openebs/rawfile"
 	if cfg.BasePath != "" {
 		basePath = cfg.BasePath
@@ -697,9 +706,10 @@ func rawfileStorageClass(name string, cfg *storagev1alpha1.RawfileConfig) *stora
 			Name:   name,
 			Labels: labels("rawfile-sc"),
 		},
-		Provisioner:       "rawfile.csi.openebs.io",
-		ReclaimPolicy:     &deletePolicy,
-		VolumeBindingMode: &volumeBindingWaitForFirstConsumer,
+		Provisioner:        "rawfile.csi.openebs.io",
+		ReclaimPolicy:      &deletePolicy,
+		VolumeBindingMode:  &volumeBindingWaitForFirstConsumer,
+		AllowVolumeExpansion: &allowExpansion,
 		Parameters: map[string]string{
 			"basePath": basePath,
 		},

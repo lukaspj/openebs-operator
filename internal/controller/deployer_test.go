@@ -309,6 +309,9 @@ func TestDeployLVMWithCustomConfig(t *testing.T) {
 	if sc.Annotations["storageclass.kubernetes.io/is-default-class"] != "true" {
 		t.Error("expected default class annotation to be true")
 	}
+	if sc.AllowVolumeExpansion == nil || !*sc.AllowVolumeExpansion {
+		t.Error("LVM StorageClass should allow volume expansion")
+	}
 }
 
 func TestDeployHostpathWithCustomBasePath(t *testing.T) {
@@ -357,6 +360,9 @@ func TestDeployHostpathWithCustomBasePath(t *testing.T) {
 	if err := cl.Get(ctx, types.NamespacedName{Name: "custom-hp"}, sc); err != nil {
 		t.Fatalf("custom hostpath SC not found: %v", err)
 	}
+	if sc.AllowVolumeExpansion == nil || !*sc.AllowVolumeExpansion {
+		t.Error("Hostpath StorageClass should allow volume expansion")
+	}
 }
 
 func TestDeployZFSWithCustomPoolName(t *testing.T) {
@@ -390,6 +396,9 @@ func TestDeployZFSWithCustomPoolName(t *testing.T) {
 	}
 	if sc.Parameters["poolname"] != "tank" {
 		t.Errorf("expected poolname tank, got %s", sc.Parameters["poolname"])
+	}
+	if sc.AllowVolumeExpansion == nil || !*sc.AllowVolumeExpansion {
+		t.Error("ZFS StorageClass should allow volume expansion")
 	}
 }
 
