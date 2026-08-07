@@ -14,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -296,20 +297,22 @@ func (d *Deployer) apply(ctx context.Context, obj client.Object) error {
 
 	key := types.NamespacedName{Name: obj.GetName(), Namespace: obj.GetNamespace()}
 
-	existing := obj.DeepCopyObject().(client.Object)
-	err := d.Get(ctx, key, existing)
-	if err != nil {
-		if !errors.IsNotFound(err) {
-			return err
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		existing := obj.DeepCopyObject().(client.Object)
+		err := d.Get(ctx, key, existing)
+		if err != nil {
+			if !errors.IsNotFound(err) {
+				return err
+			}
+			return d.Create(ctx, obj)
 		}
-		return d.Create(ctx, obj)
-	}
 
-	obj.SetResourceVersion(existing.GetResourceVersion())
-	if _, ok := obj.(*apiextensionsv1.CustomResourceDefinition); ok {
-		existing.SetAnnotations(nil)
-	}
-	return d.Update(ctx, obj)
+		obj.SetResourceVersion(existing.GetResourceVersion())
+		if _, ok := obj.(*apiextensionsv1.CustomResourceDefinition); ok {
+			existing.SetAnnotations(nil)
+		}
+		return d.Update(ctx, obj)
+	})
 }
 
 func (d *Deployer) engineFailed(engine storagev1alpha1.OpenEBSEngine, err error) storagev1alpha1.EngineStatus {
