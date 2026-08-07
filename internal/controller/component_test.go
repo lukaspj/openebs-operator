@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	storagev1alpha1 "github.com/aldershaab-it/openebs-operator/api/v1alpha1"
@@ -222,6 +223,12 @@ func TestHostpathStorageClass(t *testing.T) {
 	}
 	if sc.AllowVolumeExpansion == nil || !*sc.AllowVolumeExpansion {
 		t.Error("AllowVolumeExpansion should be true")
+	}
+	if sc.Annotations["openebs.io/cas-type"] != "local" {
+		t.Errorf("expected annotation openebs.io/cas-type=local, got %s", sc.Annotations["openebs.io/cas-type"])
+	}
+	if casCfg := sc.Annotations["cas.openebs.io/config"]; !strings.Contains(casCfg, "hostpath") || !strings.Contains(casCfg, "/data") {
+		t.Errorf("expected cas.openebs.io/config containing hostpath and /data, got %s", casCfg)
 	}
 }
 

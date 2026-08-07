@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -296,6 +297,12 @@ func TestE2E_HostpathCustomBasePath(t *testing.T) {
 	}
 	if sc.Parameters["BasePath"] != "/mnt/data" {
 		t.Errorf("expected BasePath=/mnt/data, got %s", sc.Parameters["BasePath"])
+	}
+	if sc.Annotations["openebs.io/cas-type"] != "local" {
+		t.Errorf("expected openebs.io/cas-type=local, got %s", sc.Annotations["openebs.io/cas-type"])
+	}
+	if casCfg := sc.Annotations["cas.openebs.io/config"]; !strings.Contains(casCfg, "hostpath") || !strings.Contains(casCfg, "/mnt/data") {
+		t.Errorf("expected cas.openebs.io/config with hostpath and /mnt/data, got %s", casCfg)
 	}
 }
 

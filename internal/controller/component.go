@@ -389,11 +389,16 @@ func hostpathStorageClass(name string, cfg *storagev1alpha1.HostpathConfig) *sto
 			Labels: labels("hostpath-sc"),
 			Annotations: map[string]string{
 				"storageclass.kubernetes.io/is-default-class": boolToStr(cfg.IsDefaultClass),
+				"openebs.io/cas-type":                         "local",
+				"cas.openebs.io/config": "- name: StorageType\n" +
+					"  value: hostpath\n" +
+					"- name: BasePath\n" +
+					"  value: " + basePath,
 			},
 		},
-		Provisioner:        "openebs.io/local",
-		ReclaimPolicy:      &deletePolicy,
-		VolumeBindingMode:  &volumeBindingWaitForFirstConsumer,
+		Provisioner:          "openebs.io/local",
+		ReclaimPolicy:        &deletePolicy,
+		VolumeBindingMode:    &volumeBindingWaitForFirstConsumer,
 		AllowVolumeExpansion: &allowExpansion,
 		Parameters: map[string]string{
 			"storage":  "hostpath",
