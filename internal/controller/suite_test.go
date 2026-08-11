@@ -1076,3 +1076,93 @@ func TestE2E_EngineReenable(t *testing.T) {
 		t.Errorf("hostpath should still exist after re-enable: %v", err)
 	}
 }
+
+func TestE2E_MayastorUpgradeImage(t *testing.T) {
+	ctx := context.Background()
+	s := e2eScheme()
+	cl := fake.NewClientBuilder().WithScheme(s).WithStatusSubresource(&storagev1alpha1.OpenEBS{}).Build()
+	r := &OpenEBSReconciler{Client: cl, Scheme: s}
+
+	cr := &storagev1alpha1.OpenEBS{
+		ObjectMeta: metav1.ObjectMeta{Name: "e2e-mayastor-upgrade-image"},
+		Spec: storagev1alpha1.OpenEBSSpec{
+			Mayastor: &storagev1alpha1.MayastorConfig{Enabled: true},
+		},
+	}
+	if err := cl.Create(ctx, cr); err != nil {
+		t.Fatalf("create CR: %v", err)
+	}
+	req := ctrl.Request{NamespacedName: types.NamespacedName{Name: cr.Name}}
+	_, _ = r.Reconcile(ctx, req)
+
+	dep := &appsv1.Deployment{}
+	if err := cl.Get(ctx, types.NamespacedName{Name: mayastorAgentCoreName, Namespace: mayastorNamespace}, dep); err != nil {
+		t.Fatalf("agent-core not created: %v", err)
+	}
+	initialImage := dep.Spec.Template.Spec.Containers[0].Image
+
+	// Upgrade: set a custom mayastor tag
+	obj := &storagev1alpha1.OpenEBS{}
+	if err := cl.Get(ctx, types.NamespacedName{Name: cr.Name}, obj); err != nil {
+		t.Fatalf("get CR: %v", err)
+	}
+	obj.Spec.Images = &storagev1alpha1.ImageConfig{Mayastor: "2.8.0"}
+	if err := cl.Update(ctx, obj); err != nil {
+		t.Fatalf("update CR: %v", err)
+	}
+	_, _ = r.Reconcile(ctx, req)
+
+	updated := &appsv1.Deployment{}
+	if err := cl.Get(ctx, types.NamespacedName{Name: mayastorAgentCoreName, Namespace: mayastorNamespace}, updated); err != nil {
+		t.Fatalf("agent-core should still exist: %v", err)
+	}
+	if updated.Spec.Template.Spec.Containers[0].Image == initialImage {
+		t.Error("image should have changed after upgrade")
+	}
+}
+
+func TestE2E_MayastorUpgradeEtcdReplicas(t *testing.T) {
+	ctx := context.Background()
+	s := e2eScheme()
+	cl := fake.NewClientBuilder().WithScheme(s).WithStatusSubresource(&storagev1alpha1.OpenEBS{}).Build()
+	r := &OpenEBSReconciler{Client: cl, Scheme: s}
+
+	cr := &storagev1alpha1.OpenEBS{
+		ObjectMeta: metav1.ObjectMeta{Name: "e2e-mayastor-upgrade-replicas"},
+		Spec: storagev1alpha1.OpenEBSSpec{
+			Mayastor: &storagev1alpha1.MayastorConfig{Enabled: true},
+		},
+	}
+	if err := cl.Create(ctx, cr); err != nil {
+		t.Fatalf("create CR: %v", err)
+	}
+	req := ctrl.Request{NamespacedName: types.NamespacedName{Name: cr.Name}}
+	_, _ = r.Reconcile(ctx, req)
+
+	sts := &appsv1.StatefulSet{}
+	if err := cl.Get(ctx, types.NamespacedName{Name: mayastorEtcdName, Namespace: mayastorNamespace}, sts); err != nil {
+		t.Fatalf("etcd not created: %v", err)
+	}
+	if *sts.Spec.Replicas != 1 {
+		t.Errorf("expected 1 replica, got %d", *sts.Spec.Replicas)
+	}
+
+	// Upgrade: change to 2 replicas
+	obj := &storagev1alpha1.OpenEBS{}
+	if err := cl.Get(ctx, types.NamespacedName{Name: cr.Name}, obj); err != nil {
+		t.Fatalf("get CR: %v", err)
+	}
+	obj.Spec.Mayastor.EtcdReplicaCount = 2
+	if err := cl.Update(ctx, obj); err != nil {
+		t.Fatalf("update CR: %v", err)
+	}
+	_, _ = r.Reconcile(ctx, req)
+
+	updated := &appsv1.StatefulSet{}
+	if err := cl.Get(ctx, types.NamespacedName{Name: mayastorEtcdName, Namespace: mayastorNamespace}, updated); err != nil {
+		t.Fatalf("etcd should still exist: %v", err)
+	}
+	if *updated.Spec.Replicas != 2 {
+		t.Errorf("expected 2 replicas after upgrade, got %d", *updated.Spec.Replicas)
+	}
+}

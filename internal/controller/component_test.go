@@ -11,6 +11,7 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 func TestLVMServiceAccount(t *testing.T) {
@@ -820,6 +821,22 @@ func TestMayastorEtcdStatefulSet(t *testing.T) {
 	if sts.Spec.Template.Spec.Containers[0].Name != "etcd" {
 		t.Errorf("expected container name etcd, got %s", sts.Spec.Template.Spec.Containers[0].Name)
 	}
+	if len(sts.Spec.VolumeClaimTemplates) != 1 {
+		t.Errorf("expected 1 volumeClaimTemplate, got %d", len(sts.Spec.VolumeClaimTemplates))
+	}
+	if sts.Spec.VolumeClaimTemplates[0].Name != "data" {
+		t.Errorf("expected PVC name data, got %s", sts.Spec.VolumeClaimTemplates[0].Name)
+	}
+	if len(sts.Spec.Template.Spec.Containers[0].VolumeMounts) != 1 {
+		t.Errorf("expected 1 volume mount, got %d", len(sts.Spec.Template.Spec.Containers[0].VolumeMounts))
+	}
+	if sts.Spec.Template.Spec.Containers[0].VolumeMounts[0].Name != "data" {
+		t.Errorf("expected mount name data, got %s", sts.Spec.Template.Spec.Containers[0].VolumeMounts[0].Name)
+	}
+	env := findEnv(sts.Spec.Template.Spec.Containers[0].Env, "ETCD_DATA_DIR")
+	if env == nil || env.Value != "/bitnami/etcd/data" {
+		t.Error("expected ETCD_DATA_DIR=/bitnami/etcd/data")
+	}
 }
 
 func TestMayastorEtcdStatefulSetCustomReplicas(t *testing.T) {
@@ -831,6 +848,30 @@ func TestMayastorEtcdStatefulSetCustomReplicas(t *testing.T) {
 	sts := mayastorEtcdStatefulSet(instance)
 	if *sts.Spec.Replicas != 3 {
 		t.Errorf("expected 3 replicas, got %d", *sts.Spec.Replicas)
+	}
+}
+
+func TestMayastorEtcdStatefulSetCustomStorage(t *testing.T) {
+	instance := &storagev1alpha1.OpenEBS{
+		Spec: storagev1alpha1.OpenEBSSpec{
+			Mayastor: &storagev1alpha1.MayastorConfig{
+				Enabled:               true,
+				EtcdStorageSize:       "20Gi",
+				EtcdStorageClassName:  "fast-ssd",
+			},
+		},
+	}
+	sts := mayastorEtcdStatefulSet(instance)
+	if len(sts.Spec.VolumeClaimTemplates) != 1 {
+		t.Fatalf("expected 1 PVC template, got %d", len(sts.Spec.VolumeClaimTemplates))
+	}
+	storage := sts.Spec.VolumeClaimTemplates[0].Spec.Resources.Requests.Storage()
+	if storage.String() != "20Gi" {
+		t.Errorf("expected 20Gi storage, got %s", storage.String())
+	}
+	sc := sts.Spec.VolumeClaimTemplates[0].Spec.StorageClassName
+	if sc == nil || *sc != "fast-ssd" {
+		t.Errorf("expected StorageClassName fast-ssd, got %v", sc)
 	}
 }
 
@@ -1439,4 +1480,30 @@ func findEnv(env []corev1.EnvVar, name string) *corev1.EnvVar {
 		}
 	}
 	return nil
+}
+
+func TestMayastorVolumeSnapshotClass(t *testing.T) {
+	vsc := mayastorVolumeSnapshotClass(mayastorSnapshotClassName)
+	if vsc.GetName() != mayastorSnapshotClassName {
+		t.Errorf("expected name %s, got %s", mayastorSnapshotClassName, vsc.GetName())
+	}
+	if vsc.GetKind() != "VolumeSnapshotClass" {
+		t.Errorf("expected kind VolumeSnapshotClass, got %s", vsc.GetKind())
+	}
+	driver, found, _ := unstructured.NestedString(vsc.Object, "driver")
+	if !found || driver != mayastorCSIDriverName {
+		t.Errorf("expected driver %s, got %v/%s", mayastorCSIDriverName, found, driver)
+	}
+	policy, found, _ := unstructured.NestedString(vsc.Object, "deletionPolicy")
+	if !found || policy != "Delete" {
+		t.Errorf("expected deletionPolicy Delete, got %v/%s", found, policy)
+	}
+}
+
+func TestMayastorVolumeSnapshotClassCustomName(t *testing.T) {
+	customName := "my-custom-snapshot-class"
+	vsc := mayastorVolumeSnapshotClass(customName)
+	if vsc.GetName() != customName {
+		t.Errorf("expected name %s, got %s", customName, vsc.GetName())
+	}
 }

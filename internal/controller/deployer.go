@@ -3,6 +3,8 @@ package controller
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"time"
 
 	storagev1alpha1 "github.com/aldershaab-it/openebs-operator/api/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -12,6 +14,7 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
@@ -66,6 +69,7 @@ const (
 	mayastorHANodeName           = "mayastor-agent-ha-node"
 	mayastorCSIDriverName        = "csi.nvmf.openebs.io"
 	mayastorSCName               = "mayastor"
+	mayastorSnapshotClassName    = "mayastor-snapshot"
 )
 
 func (d *Deployer) deployLVM(ctx context.Context) storagev1alpha1.EngineStatus {
@@ -229,6 +233,11 @@ func (d *Deployer) deployMayastor(ctx context.Context) storagev1alpha1.EngineSta
 		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
 	}
 
+	if err := d.applyVolumeSnapshotCRDs(ctx); err != nil {
+		logger.Error(err, "failed to apply VolumeSnapshot CRDs")
+		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
+	}
+
 	if err := d.applyRBAC(ctx, mayastorServiceAccount(), mayastorClusterRole(), mayastorClusterRoleBinding()); err != nil {
 		logger.Error(err, "failed to apply Mayastor RBAC")
 		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
@@ -236,6 +245,11 @@ func (d *Deployer) deployMayastor(ctx context.Context) storagev1alpha1.EngineSta
 
 	if err := d.apply(ctx, mayastorEtcdService()); err != nil {
 		logger.Error(err, "failed to apply etcd Service")
+		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
+	}
+
+	if err := d.etcdHealthCheck(ctx); err != nil {
+		logger.Error(err, "etcd health check failed, skipping StatefulSet update")
 		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
 	}
 
@@ -298,6 +312,15 @@ func (d *Deployer) deployMayastor(ctx context.Context) storagev1alpha1.EngineSta
 		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
 	}
 
+	snapName := mayastorSnapshotClassName
+	if d.instance.Spec.Mayastor.SnapshotClassName != "" {
+		snapName = d.instance.Spec.Mayastor.SnapshotClassName
+	}
+	if err := d.applyUnstructured(ctx, mayastorVolumeSnapshotClass(snapName)); err != nil {
+		logger.Error(err, "failed to apply VolumeSnapshotClass")
+		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
+	}
+
 	return storagev1alpha1.EngineStatus{
 		Name:    storagev1alpha1.OpenEBSEngineMayastor,
 		Phase:   storagev1alpha1.OpenEBSPhaseRunning,
@@ -329,6 +352,26 @@ func (d *Deployer) cleanup(ctx context.Context) error {
 		mayastorOperatorDiskpoolDeployment(d.instance),
 		&storagev1.CSIDriver{ObjectMeta: metav1.ObjectMeta{Name: mayastorCSIDriverName}},
 		&storagev1.StorageClass{ObjectMeta: metav1.ObjectMeta{Name: mayastorSCName}},
+		&unstructured.Unstructured{Object: map[string]interface{}{
+			"apiVersion": "apiextensions.k8s.io/v1",
+			"kind":       "CustomResourceDefinition",
+			"metadata":   map[string]interface{}{"name": "volumesnapshotclasses.snapshot.storage.k8s.io"},
+		}},
+		&unstructured.Unstructured{Object: map[string]interface{}{
+			"apiVersion": "apiextensions.k8s.io/v1",
+			"kind":       "CustomResourceDefinition",
+			"metadata":   map[string]interface{}{"name": "volumesnapshots.snapshot.storage.k8s.io"},
+		}},
+		&unstructured.Unstructured{Object: map[string]interface{}{
+			"apiVersion": "apiextensions.k8s.io/v1",
+			"kind":       "CustomResourceDefinition",
+			"metadata":   map[string]interface{}{"name": "volumesnapshotcontents.snapshot.storage.k8s.io"},
+		}},
+		&unstructured.Unstructured{Object: map[string]interface{}{
+			"apiVersion": "snapshot.storage.k8s.io/v1",
+			"kind":       "VolumeSnapshotClass",
+			"metadata":   map[string]interface{}{"name": mayastorSnapshotClassName},
+		}},
 	} {
 		if err := d.Delete(ctx, obj); err != nil && !errors.IsNotFound(err) {
 			return err
@@ -339,6 +382,34 @@ func (d *Deployer) cleanup(ctx context.Context) error {
 }
 
 // --- Helpers ---
+
+func (d *Deployer) etcdHealthCheck(ctx context.Context) error {
+	sts := &appsv1.StatefulSet{}
+	err := d.Get(ctx, types.NamespacedName{Name: mayastorEtcdName, Namespace: mayastorNamespace}, sts)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			return nil
+		}
+		return fmt.Errorf("etcd statefulset lookup: %w", err)
+	}
+	if sts.Status.ReadyReplicas == 0 {
+		return nil
+	}
+	hc := &http.Client{Timeout: 5 * time.Second}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://mayastor-etcd:2379/health", nil)
+	if err != nil {
+		return fmt.Errorf("etcd health request: %w", err)
+	}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return fmt.Errorf("etcd not healthy: %w", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("etcd health check returned status %d", resp.StatusCode)
+	}
+	return nil
+}
 
 func (d *Deployer) ensureNamespace(ctx context.Context, name string) error {
 	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: name}}
@@ -637,8 +708,15 @@ func expectedResources(instance *storagev1alpha1.OpenEBS) map[string]bool {
 		resources[mayastorClusterRoleBindingName] = true
 		resources[mayastorCSIDriverName] = true
 		resources[mayastorSCName] = true
+		resources[mayastorSnapshotClassName] = true
+		resources["volumesnapshotclasses.snapshot.storage.k8s.io"] = true
+		resources["volumesnapshots.snapshot.storage.k8s.io"] = true
+		resources["volumesnapshotcontents.snapshot.storage.k8s.io"] = true
 		if instance.Spec.Mayastor.StorageClassName != "" {
 			resources[instance.Spec.Mayastor.StorageClassName] = true
+		}
+		if instance.Spec.Mayastor.SnapshotClassName != "" {
+			resources[instance.Spec.Mayastor.SnapshotClassName] = true
 		}
 	}
 

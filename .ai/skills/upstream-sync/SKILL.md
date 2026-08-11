@@ -171,7 +171,7 @@ Single Deployment + StorageClass.  Simplest engine.
 
 ### Mayastor
 
-Summary of resources operator deploys (14 total):
+Summary of resources operator deploys (18 total):
 
 | # | Resource | Kind | Container(s) |
 |---|----------|------|-------------|
@@ -190,6 +190,10 @@ Summary of resources operator deploys (14 total):
 | 13 | mayastor-binding | ClusterRoleBinding | — |
 | 14 | csi.nvmf.openebs.io | CSIDriver | — |
 | 15 | mayastor | StorageClass | — |
+| 16 | volumesnapshotclasses.snapshot.storage.k8s.io | CRD | — |
+| 17 | volumesnapshots.snapshot.storage.k8s.io | CRD | — |
+| 18 | volumesnapshotcontents.snapshot.storage.k8s.io | CRD | — |
+| 19 | mayastor-snapshot | VolumeSnapshotClass | — |
 
 **Critical chart-operator differences to verify:**
 
@@ -216,6 +220,13 @@ Summary of resources operator deploys (14 total):
 - CSI sidecar versions come from chart `values.yaml` `csi.image.*Tag` fields.
   Mayastor uses a `snapshot-controller` container which no other engine uses.
   Its image tag is `snapshotControllerTag` (v8.2.0 in chart).
+- VolumeSnapshot CRDs installed via embedded YAML from external-snapshotter v8.2.0:
+  `volumesnapshotclasses.snapshot.storage.k8s.io`,
+  `volumesnapshots.snapshot.storage.k8s.io`,
+  `volumesnapshotcontents.snapshot.storage.k8s.io`.
+  CRDs applied as unstructured before RBAC. Managed via `volume_snapshot.go`.
+- VolumeSnapshotClass `mayastor-snapshot` uses driver `csi.nvmf.openebs.io`,
+  deletionPolicy `Delete`. Customizable via `spec.mayastor.snapshotClassName`.
 
 **Template fetch checklist for Mayastor:**
 - `chart/templates/mayastor/agents/core/agent-core-deployment.yaml`

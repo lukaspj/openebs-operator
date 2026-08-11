@@ -1,13 +1,14 @@
 package controller
 
-import (
+	import (
 	storagev1alpha1 "github.com/aldershaab-it/openebs-operator/api/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	storagev1 "k8s.io/api/storage/v1"
-	metav1    "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 const (
@@ -782,11 +783,31 @@ func mayastorEtcdStatefulSet(instance *storagev1alpha1.OpenEBS) *appsv1.Stateful
 	}
 
 	replicas := int32(1)
-	if instance.Spec.Mayastor != nil && instance.Spec.Mayastor.EtcdReplicaCount > 0 {
-		replicas = int32(instance.Spec.Mayastor.EtcdReplicaCount)
+	storageSize := "10Gi"
+	storageClassName := ""
+	if instance.Spec.Mayastor != nil {
+		if instance.Spec.Mayastor.EtcdReplicaCount > 0 {
+			replicas = int32(instance.Spec.Mayastor.EtcdReplicaCount)
+		}
+		if instance.Spec.Mayastor.EtcdStorageSize != "" {
+			storageSize = instance.Spec.Mayastor.EtcdStorageSize
+		}
+		storageClassName = instance.Spec.Mayastor.EtcdStorageClassName
 	}
 
 	lbls := labels("mayastor-etcd")
+	pvcLabels := map[string]string{"app": "etcd"}
+	pvcSpec := corev1.PersistentVolumeClaimSpec{
+		AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+		Resources: corev1.VolumeResourceRequirements{
+			Requests: corev1.ResourceList{
+				corev1.ResourceStorage: resource.MustParse(storageSize),
+			},
+		},
+	}
+	if storageClassName != "" {
+		pvcSpec.StorageClassName = &storageClassName
+	}
 	return &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      mayastorEtcdName,
@@ -812,12 +833,25 @@ func mayastorEtcdStatefulSet(instance *storagev1alpha1.OpenEBS) *appsv1.Stateful
 							{Name: "POD_NAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"}}},
 							{Name: "ETCD_AUTO_COMPACTION_MODE", Value: "revision"},
 							{Name: "ETCD_AUTO_COMPACTION_RETENTION", Value: "100"},
+							{Name: "ETCD_DATA_DIR", Value: "/bitnami/etcd/data"},
 						},
 						Ports: []corev1.ContainerPort{
 							{Name: "client", ContainerPort: 2379},
 							{Name: "peer", ContainerPort: 2380},
 						},
+						VolumeMounts: []corev1.VolumeMount{
+							{Name: "data", MountPath: "/bitnami/etcd"},
+						},
 					}},
+				},
+			},
+			VolumeClaimTemplates: []corev1.PersistentVolumeClaim{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:   "data",
+						Labels: pvcLabels,
+					},
+					Spec: pvcSpec,
 				},
 			},
 		},
@@ -1327,6 +1361,24 @@ func mayastorStorageClass(name string, instance *storagev1alpha1.OpenEBS) *stora
 		Parameters: map[string]string{
 			"repl":     repl,
 			"protocol": protocol,
+		},
+	}
+}
+
+func mayastorVolumeSnapshotClass(name string) *unstructured.Unstructured {
+	return &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "snapshot.storage.k8s.io/v1",
+			"kind":       "VolumeSnapshotClass",
+			"metadata": map[string]interface{}{
+				"name": name,
+				"labels": map[string]interface{}{
+					"app.kubernetes.io/name":       "mayastor-snapshot",
+					"app.kubernetes.io/managed-by": "openebs-operator",
+				},
+			},
+			"driver":         mayastorCSIDriverName,
+			"deletionPolicy": "Delete",
 		},
 	}
 }

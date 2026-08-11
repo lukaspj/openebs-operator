@@ -166,6 +166,20 @@ type MayastorConfig struct {
 	// +kubebuilder:default="mayastor"
 	// +optional
 	StorageClassName string `json:"storageClassName,omitempty"`
+
+	// SnapshotClassName overrides the name of the VolumeSnapshotClass.
+	// +kubebuilder:default="mayastor-snapshot"
+	// +optional
+	SnapshotClassName string `json:"snapshotClassName,omitempty"`
+
+	// EtcdStorageSize sets the PVC size for etcd data.
+	// +kubebuilder:default="10Gi"
+	// +optional
+	EtcdStorageSize string `json:"etcdStorageSize,omitempty"`
+
+	// EtcdStorageClassName sets the StorageClass for etcd PVCs.
+	// +optional
+	EtcdStorageClassName string `json:"etcdStorageClassName,omitempty"`
 }
 
 // ImageConfig overrides container images for OpenEBS components.
