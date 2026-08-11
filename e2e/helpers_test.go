@@ -56,22 +56,28 @@ const (
 	crName                    = "e2e-test"
 )
 
-func waitForCRReady(ctx context.Context, t *testing.T) {
+func waitForCRReady(ctx context.Context, t *testing.T, name string) {
 	t.Helper()
 	var cr storagev1alpha1.OpenEBS
 	err := wait.PollUntilContextTimeout(ctx, defaultInterval, defaultTimeout, true, func(ctx context.Context) (bool, error) {
-		if err := k8sClient.Get(ctx, client.ObjectKey{Name: crName}, &cr); err != nil {
+		if err := k8sClient.Get(ctx, client.ObjectKey{Name: name}, &cr); err != nil {
 			return false, nil
 		}
 		for _, e := range cr.Status.Engines {
 			if e.Phase != "Running" {
+				t.Logf("engine %s: phase=%s message=%s", e.Name, e.Phase, e.Message)
 				return false, nil
 			}
 		}
 		return len(cr.Status.Engines) > 0, nil
 	})
 	if err != nil {
-		t.Fatalf("CR did not reach Running: %v. Status: %+v", err, cr.Status)
+		for _, e := range cr.Status.Engines {
+			if e.Phase == "Failed" {
+				t.Logf("FAILED engine: %s: %s", e.Name, e.Message)
+			}
+		}
+		t.Fatalf("CR %s did not reach Running: %v. Status: %+v", name, err, cr.Status)
 	}
 }
 

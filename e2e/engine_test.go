@@ -22,7 +22,7 @@ func TestEngineAddLVM(t *testing.T) {
 		},
 	}
 	createCR(ctx, t, cr)
-	waitForCRReady(ctx, t)
+	waitForCRReady(ctx, t, crName)
 
 	depName := "openebs-lvm-controller"
 	waitForDeployment(ctx, t, depName, "openebs")
@@ -34,7 +34,7 @@ func TestEngineDisableLVM(t *testing.T) {
 	updateCR(ctx, t, crName, func(cr *storagev1alpha1.OpenEBS) {
 		cr.Spec.LVM = &storagev1alpha1.LVMConfig{Enabled: false}
 	})
-	waitForCRReady(ctx, t)
+	waitForCRReady(ctx, t, crName)
 
 	dep := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Name: "openebs-lvm-controller", Namespace: "openebs"},
@@ -49,7 +49,7 @@ func TestEngineReEnableLVM(t *testing.T) {
 	updateCR(ctx, t, crName, func(cr *storagev1alpha1.OpenEBS) {
 		cr.Spec.LVM = &storagev1alpha1.LVMConfig{Enabled: true}
 	})
-	waitForCRReady(ctx, t)
+	waitForCRReady(ctx, t, crName)
 	waitForDeployment(ctx, t, "openebs-lvm-controller", "openebs")
 }
 
@@ -58,13 +58,13 @@ func TestEngineAddRemoveZFS(t *testing.T) {
 	updateCR(ctx, t, crName, func(cr *storagev1alpha1.OpenEBS) {
 		cr.Spec.ZFS = &storagev1alpha1.ZFSConfig{Enabled: true}
 	})
-	waitForCRReady(ctx, t)
+	waitForCRReady(ctx, t, crName)
 	waitForDeployment(ctx, t, "openebs-zfs-controller", "openebs")
 
 	updateCR(ctx, t, crName, func(cr *storagev1alpha1.OpenEBS) {
 		cr.Spec.ZFS = &storagev1alpha1.ZFSConfig{Enabled: false}
 	})
-	waitForCRReady(ctx, t)
+	waitForCRReady(ctx, t, crName)
 	dep := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Name: "openebs-zfs-controller", Namespace: "openebs"},
 	}
@@ -78,7 +78,7 @@ func TestEngineMayastorDeployAndRemove(t *testing.T) {
 	updateCR(ctx, t, crName, func(cr *storagev1alpha1.OpenEBS) {
 		cr.Spec.Mayastor = &storagev1alpha1.MayastorConfig{Enabled: true}
 	})
-	waitForCRReady(ctx, t)
+	waitForCRReady(ctx, t, crName)
 
 	waitForStatefulSet(ctx, t, "mayastor-etcd", mayastorNamespace, 1)
 	waitForDeployment(ctx, t, "mayastor-agent-core", mayastorNamespace)
@@ -102,7 +102,7 @@ func TestEngineMayastorDeployAndRemove(t *testing.T) {
 	updateCR(ctx, t, crName, func(cr *storagev1alpha1.OpenEBS) {
 		cr.Spec.Mayastor = &storagev1alpha1.MayastorConfig{Enabled: false}
 	})
-	waitForCRReady(ctx, t)
+	waitForCRReady(ctx, t, crName)
 
 	dep := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Name: "mayastor-agent-core", Namespace: mayastorNamespace},
@@ -120,7 +120,7 @@ func TestMayastorStorageClassCustomName(t *testing.T) {
 			StorageClassName: "custom-mayastor-sc",
 		}
 	})
-	waitForCRReady(ctx, t)
+	waitForCRReady(ctx, t, crName)
 	waitForStatefulSet(ctx, t, "mayastor-etcd", mayastorNamespace, 1)
 
 	sc := unstructuredObj(gvk("storage.k8s.io", "v1", "StorageClass"), "custom-mayastor-sc", "")

@@ -26,7 +26,7 @@ func TestEtcdVersionUpgrade(t *testing.T) {
 		},
 	}
 	createCR(ctx, t, cr)
-	waitForCRReady(ctx, t)
+	waitForCRReady(ctx, t, "e2e-etcd-upgrade")
 	waitForStatefulSet(ctx, t, "mayastor-etcd", mayastorNamespace, 1)
 
 	sts := &appsv1.StatefulSet{}
@@ -40,7 +40,7 @@ func TestEtcdVersionUpgrade(t *testing.T) {
 	updateCR(ctx, t, "e2e-etcd-upgrade", func(cr *storagev1alpha1.OpenEBS) {
 		cr.Spec.Images.Etcd = "openebs/etcd:3.6.4-debian-12-r0"
 	})
-	waitForCRReady(ctx, t)
+	waitForCRReady(ctx, t, "e2e-etcd-upgrade")
 
 	upgraded := &appsv1.StatefulSet{}
 	if err := k8sClient.Get(ctx, client.ObjectKey{Name: "mayastor-etcd", Namespace: mayastorNamespace}, upgraded); err != nil {
@@ -62,7 +62,7 @@ func TestEtcdReplicaScaleUp(t *testing.T) {
 		},
 	}
 	createCR(ctx, t, cr)
-	waitForCRReady(ctx, t)
+	waitForCRReady(ctx, t, "e2e-etcd-scale")
 
 	sts := &appsv1.StatefulSet{}
 	if err := k8sClient.Get(ctx, client.ObjectKey{Name: "mayastor-etcd", Namespace: mayastorNamespace}, sts); err != nil {
@@ -75,7 +75,7 @@ func TestEtcdReplicaScaleUp(t *testing.T) {
 	updateCR(ctx, t, "e2e-etcd-scale", func(cr *storagev1alpha1.OpenEBS) {
 		cr.Spec.Mayastor.EtcdReplicaCount = 2
 	})
-	waitForCRReady(ctx, t)
+	waitForCRReady(ctx, t, "e2e-etcd-scale")
 
 	upgraded := &appsv1.StatefulSet{}
 	if err := k8sClient.Get(ctx, client.ObjectKey{Name: "mayastor-etcd", Namespace: mayastorNamespace}, upgraded); err != nil {
@@ -100,7 +100,7 @@ func TestEtcdStoragePVC(t *testing.T) {
 		},
 	}
 	createCR(ctx, t, cr)
-	waitForCRReady(ctx, t)
+	waitForCRReady(ctx, t, "e2e-etcd-pvc")
 
 	sts := &appsv1.StatefulSet{}
 	if err := k8sClient.Get(ctx, client.ObjectKey{Name: "mayastor-etcd", Namespace: mayastorNamespace}, sts); err != nil {
