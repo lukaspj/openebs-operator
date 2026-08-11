@@ -42,8 +42,11 @@ internal/controller/crds/  Embedded CRD YAML (VolumeSnapshot CRDs)
 config/crd/bases/          Generated CRD YAML
 config/rbac/               ClusterRole for operator
 config/manager/            Deployment manifest for operator
-deploy/                    All-in-one operator.yaml + example CR
-.ai/skills/                OpenCode project skills
+	deploy/                All-in-one operator.yaml + example CR
+	.ai/skills/             OpenCode project skills
+	e2e/                    Real-cluster e2e tests (kind, engine lifecycle, etcd upgrades)
+	.github/workflows/      CI workflows (e2e on push/PR)
+
 ```
 
 ## Engines
