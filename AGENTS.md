@@ -14,7 +14,7 @@ go build -o bin/manager ./cmd
 
 ## Key design decisions
 
-- **Fake client for e2e** — no envtest needed. Tests call `Reconcile` directly against `fake.NewClientBuilder`. All 159 tests run offline.
+- **Fake client for e2e** — no envtest needed. Tests call `Reconcile` directly against `fake.NewClientBuilder`. All 162 tests run offline.
 - **Plain Go testing** — no ginkgo/gomega. Use `testing.T` with `t.Helper()`, `t.Fatal`, `t.Error`.
 - **One CRD (`OpenEBS`)** — cluster-scoped, group `storage.aldershaab-it.dk/v1alpha1`. Multiple engines managed in a single resource.
 - **Engine selection via nil check** — `Spec.LVM != nil && Spec.LVM.Enabled` gates deployment. Disabled config pointers mean engine skipped.
@@ -76,7 +76,7 @@ defaultCSISnapshotter        = "registry.k8s.io/sig-storage/csi-snapshotter:v7.0
 defaultCSINodeRegistrar      = "registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.10.1"
 defaultCSIAttacher           = "registry.k8s.io/sig-storage/csi-attacher:v4.8.1"
 defaultCSISnapshotController = "registry.k8s.io/sig-storage/snapshot-controller:v8.2.0"
-defaultMayastorTag           = "2.7.0"
+defaultMayastorTag           = "v2.11.1"
 defaultEtcdImage             = "openebs/etcd:3.6.4-debian-12-r0"
 ```
 
@@ -110,3 +110,19 @@ No Helm, no Tiller. Operator replaces `openebs/openebs` umbrella chart.
 - **apply vs applyUnstructured**: Use `d.applyUnstructured` for resources not in the controller-runtime scheme (VolumeSnapshotClass, CRDs). The normal `d.apply` calls `DeepCopyObject()` which fails on unstructured.
 - **CRD delete**: Operator RBAC needs `delete` on `customresourcedefinitions` if cleanup removes CRDs. Currently granted.
 - **Kubelet plugin dir ≠ CSI driver name**: For Mayastor, the kubelet plugin directory is `io.openebs.mayastor` but the CSIDriver name is `csi.nvmf.openebs.io`. The registrar registration path and the CSIDriver object are different resources with different naming.
+
+## E2e tests
+
+Real-cluster tests in `e2e/` verify engine lifecycle (add/update/remove), etcd upgrades, and CR deletion cleanup. Gated by build tag: `go test -tags=e2e ./e2e/...`.
+
+**Rules for maintaining e2e tests:**
+
+- When adding a new engine field to `MayastorConfig` or `ImageConfig`, add a corresponding e2e test that sets the field and verifies the resource was updated.
+- When changing a constructor in `component.go`, verify the corresponding `waitFor*` assertion in the e2e tests still matches.
+- When changing how `cleanup()` or `cleanupOrphans()` works, verify `TestCRDeleteCleanup` still passes.
+- When bumping an image default in `component.go`, add an `TestEtcdVersionUpgrade`-style test that deploys the old version then upgrades to the new one.
+- CI runs e2e on push/PR via `.github/workflows/e2e.yaml`. If you change the operator build or deploy flow, update the workflow.
+
+## Project conventions
+
+- **`.ai/` folder**: All session memory, code analyses, research notes, and scratch files live under `.ai/`. Do not put analysis docs in the root or in `docs/`. The `.ai/skills/` subdirectory holds OpenCode skill definitions.

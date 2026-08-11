@@ -23,7 +23,7 @@ const (
 	defaultCSINodeRegistrar = "registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.10.1"
 	defaultCSIAttacher           = "registry.k8s.io/sig-storage/csi-attacher:v4.8.1"
 	defaultCSISnapshotController = "registry.k8s.io/sig-storage/snapshot-controller:v8.2.0"
-	defaultMayastorTag           = "2.7.0"
+	defaultMayastorTag           = "v2.11.1"
 	defaultEtcdImage        = "openebs/etcd:3.6.4-debian-12-r0"
 )
 

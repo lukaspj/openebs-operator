@@ -28,7 +28,7 @@ defaultHostpathImage    = "openebs/provisioner-localpv:X.Y.Z"
 defaultZFSImage         = "openebs/zfs-driver:X.Y.Z"
 defaultRawfileImage     = "openebs/rawfile-localpv:X.Y.Z"
 defaultHelperImage      = "openebs/linux-utils:X.Y.Z"
-defaultMayastorTag      = "2.7.0"
+defaultMayastorTag           = "v2.11.1"
 defaultEtcdImage        = "openebs/etcd:3.6.4-debian-12-r0"
 ```
 

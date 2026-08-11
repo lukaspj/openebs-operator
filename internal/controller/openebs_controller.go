@@ -70,14 +70,11 @@ func (r *OpenEBSReconciler) reconcileNormal(ctx context.Context, instance *stora
 
 	changed := false
 	engines, err := r.deployEngines(ctx, instance)
+	instance.Status.Engines = engines
+	instance.Status.Phase = r.derivePhase(engines)
+	changed = true
 	if err != nil {
-		instance.Status.Phase = storagev1alpha1.OpenEBSPhaseFailed
-		changed = true
 		logger.Error(err, "engine deployment failed")
-	} else {
-		instance.Status.Engines = engines
-		instance.Status.Phase = r.derivePhase(engines)
-		changed = true
 	}
 
 	if err := r.cleanupOrphans(ctx, instance); err != nil {

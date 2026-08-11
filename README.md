@@ -53,7 +53,7 @@ spec:
     storageClassName: mayastor
     snapshotClassName: mayastor-snapshot
   images:
-    mayastor: "2.7.0"
+    mayastor: "v2.11.1"
     etcd: "openebs/etcd:3.6.4-debian-12-r0"
 ```
 
@@ -77,7 +77,7 @@ All engine images can be overridden via `spec.images`:
 | `hostpath` | `openebs/provisioner-localpv:4.5.0` |
 | `zfs` | `openebs/zfs-driver:2.10.1` |
 | `rawfile` | `openebs/rawfile-localpv:0.14.1` |
-| `mayastor` | `2.7.0` (expands to `openebs/mayastor-<component>:2.7.0`) |
+| `mayastor` | `v2.11.1` (expands to `openebs/mayastor-<component>:v2.11.1`) |
 | `etcd` | `openebs/etcd:3.6.4-debian-12-r0` |
 | `csiProvisioner` | `registry.k8s.io/sig-storage/csi-provisioner:v4.0.1` |
 | `csiResizer` | `registry.k8s.io/sig-storage/csi-resizer:v1.10.1` |
