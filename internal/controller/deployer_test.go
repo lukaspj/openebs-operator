@@ -149,9 +149,14 @@ func TestDeployRawfileWithFakeClient(t *testing.T) {
 	}
 }
 
-func TestDeployMayastorNotImplemented(t *testing.T) {
+func TestDeployMayastorSucceeds(t *testing.T) {
 	scheme := runtime.NewScheme()
+	_ = storagev1alpha1.AddToScheme(scheme)
 	_ = corev1.AddToScheme(scheme)
+	_ = appsv1.AddToScheme(scheme)
+	_ = rbacv1.AddToScheme(scheme)
+	_ = storagev1.AddToScheme(scheme)
+
 	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
 	instance := &storagev1alpha1.OpenEBS{
 		Spec: storagev1alpha1.OpenEBSSpec{
@@ -163,8 +168,8 @@ func TestDeployMayastorNotImplemented(t *testing.T) {
 	ctx := context.Background()
 	status := d.deployMayastor(ctx)
 
-	if status.Phase != storagev1alpha1.OpenEBSPhaseInstalling {
-		t.Errorf("expected phase Installing (not implemented), got %s", status.Phase)
+	if status.Phase != storagev1alpha1.OpenEBSPhaseRunning {
+		t.Errorf("expected phase Running, got %s: %s", status.Phase, status.Message)
 	}
 }
 

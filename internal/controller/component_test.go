@@ -765,6 +765,280 @@ func TestMayastorConfigDeepCopy(t *testing.T) {
 	})
 }
 
+func TestMayastorServiceAccount(t *testing.T) {
+	sa := mayastorServiceAccount()
+	if sa.Name != mayastorServiceAccountName {
+		t.Errorf("expected name %s, got %s", mayastorServiceAccountName, sa.Name)
+	}
+	if sa.Namespace != mayastorNamespace {
+		t.Errorf("expected namespace %s, got %s", mayastorNamespace, sa.Namespace)
+	}
+}
+
+func TestMayastorClusterRole(t *testing.T) {
+	cr := mayastorClusterRole()
+	if cr.Name != mayastorClusterRoleName {
+		t.Errorf("expected name %s, got %s", mayastorClusterRoleName, cr.Name)
+	}
+	if len(cr.Rules) < 3 {
+		t.Errorf("expected at least 3 rules, got %d", len(cr.Rules))
+	}
+}
+
+func TestMayastorClusterRoleBinding(t *testing.T) {
+	crb := mayastorClusterRoleBinding()
+	if crb.Name != mayastorClusterRoleBindingName {
+		t.Errorf("expected name %s, got %s", mayastorClusterRoleBindingName, crb.Name)
+	}
+	if crb.RoleRef.Name != mayastorClusterRoleName {
+		t.Errorf("expected role ref %s, got %s", mayastorClusterRoleName, crb.RoleRef.Name)
+	}
+	if len(crb.Subjects) != 1 {
+		t.Errorf("expected 1 subject, got %d", len(crb.Subjects))
+	}
+}
+
+func TestMayastorEtcdStatefulSet(t *testing.T) {
+	instance := &storagev1alpha1.OpenEBS{
+		Spec: storagev1alpha1.OpenEBSSpec{
+			Mayastor: &storagev1alpha1.MayastorConfig{Enabled: true},
+		},
+	}
+	sts := mayastorEtcdStatefulSet(instance)
+	if sts.Name != mayastorEtcdName {
+		t.Errorf("expected name %s, got %s", mayastorEtcdName, sts.Name)
+	}
+	if sts.Namespace != mayastorNamespace {
+		t.Errorf("expected namespace %s, got %s", mayastorNamespace, sts.Namespace)
+	}
+	if *sts.Spec.Replicas != 1 {
+		t.Errorf("expected 1 replica, got %d", *sts.Spec.Replicas)
+	}
+	if len(sts.Spec.Template.Spec.Containers) != 1 {
+		t.Errorf("expected 1 container, got %d", len(sts.Spec.Template.Spec.Containers))
+	}
+	if sts.Spec.Template.Spec.Containers[0].Name != "etcd" {
+		t.Errorf("expected container name etcd, got %s", sts.Spec.Template.Spec.Containers[0].Name)
+	}
+}
+
+func TestMayastorEtcdStatefulSetCustomReplicas(t *testing.T) {
+	instance := &storagev1alpha1.OpenEBS{
+		Spec: storagev1alpha1.OpenEBSSpec{
+			Mayastor: &storagev1alpha1.MayastorConfig{Enabled: true, EtcdReplicaCount: 3},
+		},
+	}
+	sts := mayastorEtcdStatefulSet(instance)
+	if *sts.Spec.Replicas != 3 {
+		t.Errorf("expected 3 replicas, got %d", *sts.Spec.Replicas)
+	}
+}
+
+func TestMayastorEtcdService(t *testing.T) {
+	svc := mayastorEtcdService()
+	if svc.Name != mayastorEtcdServiceName {
+		t.Errorf("expected name %s, got %s", mayastorEtcdServiceName, svc.Name)
+	}
+	if svc.Namespace != mayastorNamespace {
+		t.Errorf("expected namespace %s, got %s", mayastorNamespace, svc.Namespace)
+	}
+	if len(svc.Spec.Ports) != 1 {
+		t.Errorf("expected 1 port, got %d", len(svc.Spec.Ports))
+	}
+}
+
+func TestMayastorAgentCoreDeployment(t *testing.T) {
+	instance := &storagev1alpha1.OpenEBS{
+		Spec: storagev1alpha1.OpenEBSSpec{
+			Mayastor: &storagev1alpha1.MayastorConfig{Enabled: true},
+		},
+	}
+	dep := mayastorAgentCoreDeployment(instance)
+	if dep.Name != mayastorAgentCoreName {
+		t.Errorf("expected name %s, got %s", mayastorAgentCoreName, dep.Name)
+	}
+	if dep.Namespace != mayastorNamespace {
+		t.Errorf("expected namespace %s, got %s", mayastorNamespace, dep.Namespace)
+	}
+	if dep.Spec.Template.Spec.ServiceAccountName != mayastorServiceAccountName {
+		t.Errorf("expected SA %s, got %s", mayastorServiceAccountName, dep.Spec.Template.Spec.ServiceAccountName)
+	}
+}
+
+func TestMayastorAPIRestDeployment(t *testing.T) {
+	instance := &storagev1alpha1.OpenEBS{
+		Spec: storagev1alpha1.OpenEBSSpec{
+			Mayastor: &storagev1alpha1.MayastorConfig{Enabled: true},
+		},
+	}
+	dep := mayastorAPIRestDeployment(instance)
+	if dep.Name != mayastorAPIRestName {
+		t.Errorf("expected name %s, got %s", mayastorAPIRestName, dep.Name)
+	}
+}
+
+func TestMayastorAPIRestService(t *testing.T) {
+	svc := mayastorAPIRestService()
+	if svc.Name != mayastorAPIRestServiceName {
+		t.Errorf("expected name %s, got %s", mayastorAPIRestServiceName, svc.Name)
+	}
+	if svc.Namespace != mayastorNamespace {
+		t.Errorf("expected namespace %s, got %s", mayastorNamespace, svc.Namespace)
+	}
+}
+
+func TestMayastorCSIControllerDeployment(t *testing.T) {
+	instance := &storagev1alpha1.OpenEBS{
+		Spec: storagev1alpha1.OpenEBSSpec{
+			Mayastor: &storagev1alpha1.MayastorConfig{Enabled: true},
+		},
+	}
+	dep := mayastorCSIControllerDeployment(instance)
+	if dep.Name != mayastorCSIControllerName {
+		t.Errorf("expected name %s, got %s", mayastorCSIControllerName, dep.Name)
+	}
+	if dep.Namespace != mayastorNamespace {
+		t.Errorf("expected namespace %s, got %s", mayastorNamespace, dep.Namespace)
+	}
+	if len(dep.Spec.Template.Spec.Containers) != 6 {
+		t.Errorf("expected 6 containers, got %d", len(dep.Spec.Template.Spec.Containers))
+	}
+}
+
+func TestMayastorIOEngineDaemonSet(t *testing.T) {
+	instance := &storagev1alpha1.OpenEBS{
+		Spec: storagev1alpha1.OpenEBSSpec{
+			Mayastor: &storagev1alpha1.MayastorConfig{Enabled: true},
+		},
+	}
+	ds := mayastorIOEngineDaemonSet(instance)
+	if ds.Name != mayastorIOEngineName {
+		t.Errorf("expected name %s, got %s", mayastorIOEngineName, ds.Name)
+	}
+	if ds.Namespace != mayastorNamespace {
+		t.Errorf("expected namespace %s, got %s", mayastorNamespace, ds.Namespace)
+	}
+	if ds.Spec.Template.Spec.Containers[0].SecurityContext.Privileged == nil || !*ds.Spec.Template.Spec.Containers[0].SecurityContext.Privileged {
+		t.Error("expected privileged security context")
+	}
+	if _, ok := ds.Spec.Template.Spec.NodeSelector["openebs.io/engine"]; !ok {
+		t.Error("expected nodeSelector openebs.io/engine=mayastor")
+	}
+}
+
+func TestMayastorCSINodeDaemonSet(t *testing.T) {
+	instance := &storagev1alpha1.OpenEBS{
+		Spec: storagev1alpha1.OpenEBSSpec{
+			Mayastor: &storagev1alpha1.MayastorConfig{Enabled: true},
+		},
+	}
+	ds := mayastorCSINodeDaemonSet(instance)
+	if ds.Name != mayastorCSINodeName {
+		t.Errorf("expected name %s, got %s", mayastorCSINodeName, ds.Name)
+	}
+	if len(ds.Spec.Template.Spec.Containers) != 2 {
+		t.Errorf("expected 2 containers, got %d", len(ds.Spec.Template.Spec.Containers))
+	}
+}
+
+func TestMayastorOperatorDiskpoolDeployment(t *testing.T) {
+	instance := &storagev1alpha1.OpenEBS{
+		Spec: storagev1alpha1.OpenEBSSpec{
+			Mayastor: &storagev1alpha1.MayastorConfig{Enabled: true},
+		},
+	}
+	dep := mayastorOperatorDiskpoolDeployment(instance)
+	if dep.Name != mayastorDiskpoolName {
+		t.Errorf("expected name %s, got %s", mayastorDiskpoolName, dep.Name)
+	}
+}
+
+func TestMayastorHANodeDaemonSet(t *testing.T) {
+	instance := &storagev1alpha1.OpenEBS{
+		Spec: storagev1alpha1.OpenEBSSpec{
+			Mayastor: &storagev1alpha1.MayastorConfig{Enabled: true},
+		},
+	}
+	ds := mayastorHANodeDaemonSet(instance)
+	if ds.Name != mayastorHANodeName {
+		t.Errorf("expected name %s, got %s", mayastorHANodeName, ds.Name)
+	}
+	if ds.Namespace != mayastorNamespace {
+		t.Errorf("expected namespace %s, got %s", mayastorNamespace, ds.Namespace)
+	}
+}
+
+func TestMayastorCSIDriver(t *testing.T) {
+	driver := mayastorCSIDriver()
+	if driver.Name != mayastorCSIDriverName {
+		t.Errorf("expected name %s, got %s", mayastorCSIDriverName, driver.Name)
+	}
+	if driver.Spec.AttachRequired == nil || !*driver.Spec.AttachRequired {
+		t.Error("expected AttachRequired=true")
+	}
+}
+
+func TestMayastorStorageClass(t *testing.T) {
+	instance := &storagev1alpha1.OpenEBS{
+		Spec: storagev1alpha1.OpenEBSSpec{
+			Mayastor: &storagev1alpha1.MayastorConfig{Enabled: true},
+		},
+	}
+	sc := mayastorStorageClass(mayastorSCName, instance)
+	if sc.Name != mayastorSCName {
+		t.Errorf("expected name %s, got %s", mayastorSCName, sc.Name)
+	}
+	if sc.Provisioner != mayastorCSIDriverName {
+		t.Errorf("expected provisioner %s, got %s", mayastorCSIDriverName, sc.Provisioner)
+	}
+	if sc.Parameters["repl"] != "1" {
+		t.Errorf("expected repl=1, got %s", sc.Parameters["repl"])
+	}
+}
+
+func TestMayastorStorageClassCustomName(t *testing.T) {
+	instance := &storagev1alpha1.OpenEBS{
+		Spec: storagev1alpha1.OpenEBSSpec{
+			Mayastor: &storagev1alpha1.MayastorConfig{Enabled: true, StorageClassName: "my-mayastor"},
+		},
+	}
+	sc := mayastorStorageClass("my-mayastor", instance)
+	if sc.Name != "my-mayastor" {
+		t.Errorf("expected name my-mayastor, got %s", sc.Name)
+	}
+}
+
+func TestMayastorImageOverride(t *testing.T) {
+	instance := &storagev1alpha1.OpenEBS{
+		Spec: storagev1alpha1.OpenEBSSpec{
+			Mayastor: &storagev1alpha1.MayastorConfig{Enabled: true},
+			Images: &storagev1alpha1.ImageConfig{
+				Mayastor: "2.8.0",
+			},
+		},
+	}
+	dep := mayastorAgentCoreDeployment(instance)
+	expected := "openebs/mayastor-agent-core:2.8.0"
+	if dep.Spec.Template.Spec.Containers[0].Image != expected {
+		t.Errorf("expected image %s, got %s", expected, dep.Spec.Template.Spec.Containers[0].Image)
+	}
+}
+
+func TestMayastorEtcdImageOverride(t *testing.T) {
+	instance := &storagev1alpha1.OpenEBS{
+		Spec: storagev1alpha1.OpenEBSSpec{
+			Mayastor: &storagev1alpha1.MayastorConfig{Enabled: true},
+			Images: &storagev1alpha1.ImageConfig{
+				Etcd: "custom/etcd:v1",
+			},
+		},
+	}
+	sts := mayastorEtcdStatefulSet(instance)
+	if sts.Spec.Template.Spec.Containers[0].Image != "custom/etcd:v1" {
+		t.Errorf("expected custom/etcd:v1, got %s", sts.Spec.Template.Spec.Containers[0].Image)
+	}
+}
+
 func TestOpenEBSSpecDeepCopy(t *testing.T) {
 	spec := &storagev1alpha1.OpenEBSSpec{
 		LVM: &storagev1alpha1.LVMConfig{

@@ -429,7 +429,7 @@ func TestE2E_NilConfigNoop(t *testing.T) {
 //  E2E: Mayastor Engine (pending support)
 // ============================================================
 
-func TestE2E_MayastorInstalling(t *testing.T) {
+func TestE2E_MayastorRunning(t *testing.T) {
 	ctx := context.Background()
 	s := e2eScheme()
 
@@ -447,8 +447,8 @@ func TestE2E_MayastorInstalling(t *testing.T) {
 	if updated.Status.Engines[0].Name != storagev1alpha1.OpenEBSEngineMayastor {
 		t.Errorf("expected engine mayastor, got %s", updated.Status.Engines[0].Name)
 	}
-	if updated.Status.Engines[0].Phase != storagev1alpha1.OpenEBSPhaseInstalling {
-		t.Errorf("expected Installing, got %s", updated.Status.Engines[0].Phase)
+	if updated.Status.Engines[0].Phase != storagev1alpha1.OpenEBSPhaseRunning {
+		t.Errorf("expected Running, got %s", updated.Status.Engines[0].Phase)
 	}
 }
 
@@ -747,12 +747,12 @@ func TestE2E_HostpathIsDefaultClass(t *testing.T) {
 //  E2E: Phase Derivation — Degraded
 // ============================================================
 
-func TestE2E_PhaseDegraded(t *testing.T) {
+func TestE2E_AllEnginesRunning(t *testing.T) {
 	ctx := context.Background()
 	s := e2eScheme()
 
 	cr := &storagev1alpha1.OpenEBS{
-		ObjectMeta: metav1.ObjectMeta{Name: "e2e-degraded"},
+		ObjectMeta: metav1.ObjectMeta{Name: "e2e-all-running"},
 		Spec: storagev1alpha1.OpenEBSSpec{
 			LVM:      &storagev1alpha1.LVMConfig{Enabled: true},
 			Mayastor: &storagev1alpha1.MayastorConfig{Enabled: true},
@@ -760,8 +760,8 @@ func TestE2E_PhaseDegraded(t *testing.T) {
 	}
 	updated, _ := e2eReconcile(ctx, t, s, cr, 2)
 
-	if updated.Status.Phase != storagev1alpha1.OpenEBSPhaseInstalling {
-		t.Errorf("expected Installing (Mayastor not yet Running), got %s", updated.Status.Phase)
+	if updated.Status.Phase != storagev1alpha1.OpenEBSPhaseRunning {
+		t.Errorf("expected Running (all engines ready), got %s", updated.Status.Phase)
 	}
 }
 
@@ -908,11 +908,11 @@ func TestE2E_OneShotInit(t *testing.T) {
 			Mayastor: &storagev1alpha1.MayastorConfig{Enabled: true},
 		},
 	}
-	// Reconcile multiple times — Mayastor should remain Installing, not re-initialize
+	// Reconcile multiple times — Mayastor should remain Running, not re-initialize
 	updated, _ := e2eReconcile(ctx, t, s, cr, 4)
 
-	if updated.Status.Phase != storagev1alpha1.OpenEBSPhaseInstalling {
-		t.Errorf("expected Installing after multiple reconciles (one-shot), got %s", updated.Status.Phase)
+	if updated.Status.Phase != storagev1alpha1.OpenEBSPhaseRunning {
+		t.Errorf("expected Running after multiple reconciles, got %s", updated.Status.Phase)
 	}
 	if len(updated.Status.Engines) != 1 {
 		t.Errorf("expected 1 engine, got %d", len(updated.Status.Engines))
@@ -969,9 +969,9 @@ func TestE2E_PartialFailureRecovery(t *testing.T) {
 	cl := fake.NewClientBuilder().WithScheme(s).WithStatusSubresource(&storagev1alpha1.OpenEBS{}).Build()
 	r := &OpenEBSReconciler{Client: cl, Scheme: s}
 
-	// LVM enabled, Mayastor enabled (Mayastor reports Installing = not ready)
+	// LVM and Mayastor enabled — both should deploy successfully
 	cr := &storagev1alpha1.OpenEBS{
-		ObjectMeta: metav1.ObjectMeta{Name: "e2e-partial"},
+		ObjectMeta: metav1.ObjectMeta{Name: "e2e-both"},
 		Spec: storagev1alpha1.OpenEBSSpec{
 			LVM:      &storagev1alpha1.LVMConfig{Enabled: true},
 			Mayastor: &storagev1alpha1.MayastorConfig{Enabled: true},
@@ -991,7 +991,7 @@ func TestE2E_PartialFailureRecovery(t *testing.T) {
 		t.Errorf("LVM deployment should exist despite Mayastor being pending: %v", err)
 	}
 
-	// Status should show LVM Running + Mayastor Installing
+	// Status should show both LVM and Mayastor Running
 	obj := &storagev1alpha1.OpenEBS{}
 	if err := cl.Get(ctx, types.NamespacedName{Name: cr.Name}, obj); err != nil {
 		t.Fatalf("get CR: %v", err)
@@ -1006,15 +1006,15 @@ func TestE2E_PartialFailureRecovery(t *testing.T) {
 				t.Errorf("LVM should be Running, got %s", e.Phase)
 			}
 		case storagev1alpha1.OpenEBSEngineMayastor:
-			if e.Phase != storagev1alpha1.OpenEBSPhaseInstalling {
-				t.Errorf("Mayastor should still be Installing, got %s", e.Phase)
+			if e.Phase != storagev1alpha1.OpenEBSPhaseRunning {
+				t.Errorf("Mayastor should be Running, got %s", e.Phase)
 			}
 		}
 	}
 
-	// Overall phase: Installing (because Mayastor isn't Running)
-	if obj.Status.Phase != storagev1alpha1.OpenEBSPhaseInstalling {
-		t.Errorf("expected Installing phase (Mayastor not ready), got %s", obj.Status.Phase)
+	// Overall phase: Running (both engines ready)
+	if obj.Status.Phase != storagev1alpha1.OpenEBSPhaseRunning {
+		t.Errorf("expected Running phase, got %s", obj.Status.Phase)
 	}
 }
 

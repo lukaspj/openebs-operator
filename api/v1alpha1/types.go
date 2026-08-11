@@ -150,7 +150,7 @@ type MayastorConfig struct {
 	Enabled bool `json:"enabled"`
 
 	// EtcdReplicaCount sets the number of etcd replicas.
-	// +kubebuilder:default=3
+	// +kubebuilder:default=1
 	// +optional
 	EtcdReplicaCount int `json:"etcdReplicaCount,omitempty"`
 
@@ -161,6 +161,11 @@ type MayastorConfig struct {
 	// CoreAgentResources defines resource requests/limits for the core agent.
 	// +optional
 	CoreAgentResources *ResourceSpec `json:"coreAgentResources,omitempty"`
+
+	// StorageClassName overrides the name of the Mayastor StorageClass.
+	// +kubebuilder:default="mayastor"
+	// +optional
+	StorageClassName string `json:"storageClassName,omitempty"`
 }
 
 // ImageConfig overrides container images for OpenEBS components.
@@ -172,7 +177,11 @@ type ImageConfig struct {
 	CSIProvisioner   string `json:"csiProvisioner,omitempty"`
 	CSIResizer       string `json:"csiResizer,omitempty"`
 	CSISnapshotter   string `json:"csiSnapshotter,omitempty"`
-	CSINodeRegistrar string `json:"csiNodeRegistrar,omitempty"`
+	CSIAttacher           string `json:"csiAttacher,omitempty"`
+	CSISnapshotController string `json:"csiSnapshotController,omitempty"`
+	CSINodeRegistrar      string `json:"csiNodeRegistrar,omitempty"`
+	Mayastor         string `json:"mayastor,omitempty"`
+	Etcd             string `json:"etcd,omitempty"`
 }
 
 // ResourceSpec defines CPU and memory resources.

@@ -6,7 +6,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	storagev1 "k8s.io/api/storage/v1"
-	metav1 	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1    "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 const (
@@ -19,6 +20,10 @@ const (
 	defaultCSIResizer       = "registry.k8s.io/sig-storage/csi-resizer:v1.10.1"
 	defaultCSISnapshotter   = "registry.k8s.io/sig-storage/csi-snapshotter:v7.0.2"
 	defaultCSINodeRegistrar = "registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.10.1"
+	defaultCSIAttacher           = "registry.k8s.io/sig-storage/csi-attacher:v4.8.1"
+	defaultCSISnapshotController = "registry.k8s.io/sig-storage/snapshot-controller:v8.2.0"
+	defaultMayastorTag           = "2.7.0"
+	defaultEtcdImage        = "openebs/etcd:3.6.4-debian-12-r0"
 )
 
 func resolveImage(override, defaultImage string) string {
@@ -252,6 +257,7 @@ func lvmNodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSet {
 }
 
 var hostpathMountPropagation = corev1.MountPropagationBidirectional
+var hostpathDirOrCreate = corev1.HostPathDirectoryOrCreate
 
 func lvmCSIDriver() *storagev1.CSIDriver {
 	attachRequired := true
@@ -732,6 +738,595 @@ func rawfileStorageClass(name string, cfg *storagev1alpha1.RawfileConfig) *stora
 		AllowVolumeExpansion: &allowExpansion,
 		Parameters: map[string]string{
 			"basePath": basePath,
+		},
+	}
+}
+
+// ---- Mayastor Resources ----
+
+func mayastorImage(tag, component string) string {
+	return "openebs/mayastor-" + component + ":" + tag
+}
+
+func mayastorServiceAccount() *corev1.ServiceAccount {
+	return &corev1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{Name: mayastorServiceAccountName, Namespace: mayastorNamespace, Labels: labels("mayastor-rbac")},
+	}
+}
+
+func mayastorClusterRole() *rbacv1.ClusterRole {
+	return &rbacv1.ClusterRole{
+		ObjectMeta: metav1.ObjectMeta{Name: mayastorClusterRoleName, Labels: labels("mayastor-rbac")},
+		Rules: []rbacv1.PolicyRule{
+			{APIGroups: []string{""}, Resources: []string{"pods", "nodes", "services", "persistentvolumes", "persistentvolumeclaims", "events", "configmaps", "secrets"}, Verbs: []string{"*"}},
+			{APIGroups: []string{""}, Resources: []string{"namespaces"}, Verbs: []string{"get", "list", "watch"}},
+			{APIGroups: []string{"apps"}, Resources: []string{"deployments", "daemonsets", "statefulsets"}, Verbs: []string{"*"}},
+			{APIGroups: []string{"storage.k8s.io"}, Resources: []string{"storageclasses", "volumeattachments", "csinodes"}, Verbs: []string{"*"}},
+			{APIGroups: []string{"coordination.k8s.io"}, Resources: []string{"leases"}, Verbs: []string{"*"}},
+		},
+	}
+}
+
+func mayastorClusterRoleBinding() *rbacv1.ClusterRoleBinding {
+	return &rbacv1.ClusterRoleBinding{
+		ObjectMeta: metav1.ObjectMeta{Name: mayastorClusterRoleBindingName, Labels: labels("mayastor-rbac")},
+		RoleRef:    rbacv1.RoleRef{APIGroup: "rbac.authorization.k8s.io", Kind: "ClusterRole", Name: mayastorClusterRoleName},
+		Subjects:   []rbacv1.Subject{{Kind: "ServiceAccount", Name: mayastorServiceAccountName, Namespace: mayastorNamespace}},
+	}
+}
+
+func mayastorEtcdStatefulSet(instance *storagev1alpha1.OpenEBS) *appsv1.StatefulSet {
+	etcdImg := defaultEtcdImage
+	if instance.Spec.Images != nil {
+		etcdImg = resolveImage(instance.Spec.Images.Etcd, defaultEtcdImage)
+	}
+
+	replicas := int32(1)
+	if instance.Spec.Mayastor != nil && instance.Spec.Mayastor.EtcdReplicaCount > 0 {
+		replicas = int32(instance.Spec.Mayastor.EtcdReplicaCount)
+	}
+
+	lbls := labels("mayastor-etcd")
+	return &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      mayastorEtcdName,
+			Namespace: mayastorNamespace,
+			Labels:    lbls,
+		},
+		Spec: appsv1.StatefulSetSpec{
+			ServiceName: mayastorEtcdServiceName,
+			Replicas:    &replicas,
+			Selector:    &metav1.LabelSelector{MatchLabels: lbls},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Labels: lbls},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{{
+						Name:    "etcd",
+						Image:   etcdImg,
+						Command: []string{"etcd"},
+						Args: []string{
+							"--listen-client-urls=http://0.0.0.0:2379",
+							"--advertise-client-urls=http://$(POD_NAME).mayastor-etcd:2379",
+						},
+						Env: []corev1.EnvVar{
+							{Name: "POD_NAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"}}},
+							{Name: "ETCD_AUTO_COMPACTION_MODE", Value: "revision"},
+							{Name: "ETCD_AUTO_COMPACTION_RETENTION", Value: "100"},
+						},
+						Ports: []corev1.ContainerPort{
+							{Name: "client", ContainerPort: 2379},
+							{Name: "peer", ContainerPort: 2380},
+						},
+					}},
+				},
+			},
+		},
+	}
+}
+
+func mayastorEtcdService() *corev1.Service {
+	lbls := labels("mayastor-etcd")
+	return &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      mayastorEtcdServiceName,
+			Namespace: mayastorNamespace,
+			Labels:    lbls,
+		},
+		Spec: corev1.ServiceSpec{
+			Selector: lbls,
+			Ports: []corev1.ServicePort{
+				{Name: "client", Port: 2379},
+			},
+		},
+	}
+}
+
+func mayastorAgentCoreDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployment {
+	tag := defaultMayastorTag
+	if instance.Spec.Images != nil && instance.Spec.Images.Mayastor != "" {
+		tag = instance.Spec.Images.Mayastor
+	}
+	coreImg := mayastorImage(tag, "agent-core")
+	haImg := mayastorImage(tag, "agent-ha-cluster")
+
+	lbls := labels("mayastor-agent-core")
+	replicas := int32(1)
+	return &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      mayastorAgentCoreName,
+			Namespace: mayastorNamespace,
+			Labels:    lbls,
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &replicas,
+			Selector: &metav1.LabelSelector{MatchLabels: lbls},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Labels: lbls},
+				Spec: corev1.PodSpec{
+					ServiceAccountName: mayastorServiceAccountName,
+					Containers: []corev1.Container{
+						{
+							Name:  "agent-core",
+							Image: coreImg,
+							Args: []string{
+								"--store=http://mayastor-etcd:2379",
+								"--grpc-server-addr=[::]:50051",
+							},
+							Ports: []corev1.ContainerPort{
+								{Name: "grpc", ContainerPort: 50051},
+							},
+						},
+						{
+							Name:  "agent-ha-cluster",
+							Image: haImg,
+							Args: []string{
+								"-g=[::]:50052",
+								"--store=http://mayastor-etcd:2379",
+								"--core-grpc=http://mayastor-agent-core:50051",
+							},
+							Ports: []corev1.ContainerPort{
+								{Name: "grpc", ContainerPort: 50052},
+							},
+							Env: []corev1.EnvVar{
+								{Name: "RUST_LOG", Value: "info"},
+								{Name: "MY_POD_NAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"}}},
+								{Name: "MY_POD_NAMESPACE", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}}},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func mayastorAPIRestDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployment {
+	tag := defaultMayastorTag
+	if instance.Spec.Images != nil && instance.Spec.Images.Mayastor != "" {
+		tag = instance.Spec.Images.Mayastor
+	}
+	img := mayastorImage(tag, "api-rest")
+
+	lbls := labels("mayastor-api-rest")
+	replicas := int32(1)
+	return &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      mayastorAPIRestName,
+			Namespace: mayastorNamespace,
+			Labels:    lbls,
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &replicas,
+			Selector: &metav1.LabelSelector{MatchLabels: lbls},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Labels: lbls},
+				Spec: corev1.PodSpec{
+					ServiceAccountName: mayastorServiceAccountName,
+					Containers: []corev1.Container{{
+						Name:  "api-rest",
+						Image: img,
+						Args:  []string{"--endpoint=0.0.0.0:8081"},
+						Ports: []corev1.ContainerPort{
+							{Name: "rest", ContainerPort: 8081},
+						},
+					}},
+				},
+			},
+		},
+	}
+}
+
+func mayastorAPIRestService() *corev1.Service {
+	lbls := labels("mayastor-api-rest")
+	return &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      mayastorAPIRestServiceName,
+			Namespace: mayastorNamespace,
+			Labels:    lbls,
+		},
+		Spec: corev1.ServiceSpec{
+			Selector: lbls,
+			Ports: []corev1.ServicePort{
+				{Name: "rest", Port: 8081},
+			},
+		},
+	}
+}
+
+func mayastorCSIControllerDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployment {
+	csiProvisionerImg, csiAttacherImg, csiSnapshotterImg, csiSnapshotControllerImg, csiResizerImg := defaultCSIProvisioner, defaultCSIAttacher, defaultCSISnapshotter, defaultCSISnapshotController, defaultCSIResizer
+	mayastorTag := defaultMayastorTag
+	if instance.Spec.Images != nil {
+		csiProvisionerImg = resolveImage(instance.Spec.Images.CSIProvisioner, defaultCSIProvisioner)
+		csiAttacherImg = resolveImage(instance.Spec.Images.CSIAttacher, defaultCSIAttacher)
+		csiSnapshotterImg = resolveImage(instance.Spec.Images.CSISnapshotter, defaultCSISnapshotter)
+		csiSnapshotControllerImg = resolveImage(instance.Spec.Images.CSISnapshotController, defaultCSISnapshotController)
+		csiResizerImg = resolveImage(instance.Spec.Images.CSIResizer, defaultCSIResizer)
+		if instance.Spec.Images.Mayastor != "" {
+			mayastorTag = instance.Spec.Images.Mayastor
+		}
+	}
+	csiControllerImg := mayastorImage(mayastorTag, "csi-controller")
+
+	lbls := labels("mayastor-csi-controller")
+	replicas := int32(1)
+	socketDir := "/var/lib/csi/sockets/pluginproxy"
+	socketPath := socketDir + "/csi.sock"
+	return &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      mayastorCSIControllerName,
+			Namespace: mayastorNamespace,
+			Labels:    lbls,
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &replicas,
+			Selector: &metav1.LabelSelector{MatchLabels: lbls},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Labels: lbls},
+				Spec: corev1.PodSpec{
+					HostNetwork:        true,
+					ServiceAccountName: mayastorServiceAccountName,
+					Containers: []corev1.Container{
+						{
+							Name:  "csi-provisioner",
+							Image: csiProvisionerImg,
+							Args: []string{
+								"--csi-address=$(ADDRESS)",
+								"--v=2",
+								"--feature-gates=Topology=true",
+								"--strict-topology=false",
+								"--default-fstype=ext4",
+								"--extra-create-metadata",
+								"--timeout=36s",
+								"--worker-threads=10",
+							},
+							Env: []corev1.EnvVar{{Name: "ADDRESS", Value: socketPath}},
+							VolumeMounts: []corev1.VolumeMount{
+								{Name: "socket-dir", MountPath: socketDir},
+							},
+						},
+						{
+							Name:  "csi-attacher",
+							Image: csiAttacherImg,
+							Args: []string{
+								"--csi-address=$(ADDRESS)",
+								"--v=2",
+								"--timeout=36s",
+							},
+							Env: []corev1.EnvVar{{Name: "ADDRESS", Value: socketPath}},
+							VolumeMounts: []corev1.VolumeMount{
+								{Name: "socket-dir", MountPath: socketDir},
+							},
+						},
+						{
+							Name:  "csi-snapshotter",
+							Image: csiSnapshotterImg,
+							Args: []string{
+								"--csi-address=$(ADDRESS)",
+								"--v=2",
+							},
+							Env: []corev1.EnvVar{{Name: "ADDRESS", Value: socketPath}},
+							VolumeMounts: []corev1.VolumeMount{
+								{Name: "socket-dir", MountPath: socketDir},
+							},
+						},
+						{
+							Name:  "csi-snapshot-controller",
+							Image: csiSnapshotControllerImg,
+							Args: []string{
+								"--v=2",
+								"--leader-election=false",
+							},
+						},
+						{
+							Name:  "csi-resizer",
+							Image: csiResizerImg,
+							Args: []string{
+								"--csi-address=$(ADDRESS)",
+								"--v=2",
+								"--handle-volume-inuse-error=false",
+							},
+							Env: []corev1.EnvVar{{Name: "ADDRESS", Value: socketPath}},
+							VolumeMounts: []corev1.VolumeMount{
+								{Name: "socket-dir", MountPath: socketDir},
+							},
+						},
+						{
+							Name:  "mayastor-csi-controller",
+							Image: csiControllerImg,
+							Args: []string{
+								"--csi-socket=" + socketPath,
+								"--rest-endpoint=http://mayastor-api-rest:8081",
+								"--node-selector=openebs.io/csi-node=mayastor",
+							},
+							VolumeMounts: []corev1.VolumeMount{
+								{Name: "socket-dir", MountPath: socketDir},
+							},
+						},
+					},
+					Volumes: []corev1.Volume{
+						{Name: "socket-dir", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
+					},
+				},
+			},
+		},
+	}
+}
+
+func mayastorIOEngineDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSet {
+	tag := defaultMayastorTag
+	if instance.Spec.Images != nil && instance.Spec.Images.Mayastor != "" {
+		tag = instance.Spec.Images.Mayastor
+	}
+	ioEngineImg := mayastorImage(tag, "io-engine")
+
+	lbls := labels("mayastor-io-engine")
+	return &appsv1.DaemonSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      mayastorIOEngineName,
+			Namespace: mayastorNamespace,
+			Labels:    lbls,
+		},
+		Spec: appsv1.DaemonSetSpec{
+			Selector: &metav1.LabelSelector{MatchLabels: lbls},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Labels: lbls},
+				Spec: corev1.PodSpec{
+					NodeSelector: map[string]string{"openebs.io/engine": "mayastor"},
+					HostNetwork:  true,
+					Containers: []corev1.Container{{
+						Name:  "io-engine",
+						Image: ioEngineImg,
+						SecurityContext: &corev1.SecurityContext{
+							Privileged: boolPtr(true),
+						},
+						Args: []string{
+							"--endpoint=0.0.0.0:10124",
+							"--node=$(NODE_NAME)",
+							"--namespace=$(POD_NAMESPACE)",
+						},
+						Env: []corev1.EnvVar{
+							{Name: "NODE_NAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.nodeName"}}},
+							{Name: "POD_NAMESPACE", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}}},
+						},
+						VolumeMounts: []corev1.VolumeMount{
+							{Name: "hugepage-2mi", MountPath: "/dev/hugepages"},
+							{Name: "hugepage-1gi", MountPath: "/dev/hugepages1G"},
+							{Name: "host-tmp", MountPath: "/host/var/tmp"},
+							{Name: "device-dir", MountPath: "/dev"},
+						},
+					}},
+					Volumes: []corev1.Volume{
+						{Name: "hugepage-2mi", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/dev/hugepages"}}},
+						{Name: "hugepage-1gi", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/dev/hugepages1G"}}},
+						{Name: "host-tmp", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/var/tmp"}}},
+						{Name: "device-dir", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/dev"}}},
+					},
+				},
+			},
+		},
+	}
+}
+
+func mayastorCSINodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSet {
+	csiRegistrarImg := defaultCSINodeRegistrar
+	mayastorTag := defaultMayastorTag
+	if instance.Spec.Images != nil {
+		csiRegistrarImg = resolveImage(instance.Spec.Images.CSINodeRegistrar, defaultCSINodeRegistrar)
+		if instance.Spec.Images.Mayastor != "" {
+			mayastorTag = instance.Spec.Images.Mayastor
+		}
+	}
+	csiNodeImg := mayastorImage(mayastorTag, "csi-node")
+
+	lbls := labels("mayastor-csi-node")
+	kubeletPluginDir := "/var/lib/kubelet/plugins/io.openebs.mayastor"
+	return &appsv1.DaemonSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      mayastorCSINodeName,
+			Namespace: mayastorNamespace,
+			Labels:    lbls,
+		},
+		Spec: appsv1.DaemonSetSpec{
+			Selector: &metav1.LabelSelector{MatchLabels: lbls},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Labels: lbls},
+				Spec: corev1.PodSpec{
+					ServiceAccountName: mayastorServiceAccountName,
+					HostNetwork:        true,
+					NodeSelector:       map[string]string{"openebs.io/csi-node": "mayastor"},
+					Containers: []corev1.Container{
+						{
+							Name:  "csi-driver-registrar",
+							Image: csiRegistrarImg,
+							Args: []string{
+								"--csi-address=/csi/csi.sock",
+								"--kubelet-registration-path=" + kubeletPluginDir + "/csi.sock",
+							},
+							VolumeMounts: []corev1.VolumeMount{
+								{Name: "plugin-dir", MountPath: "/csi"},
+								{Name: "registration-dir", MountPath: "/registration"},
+							},
+							Resources: corev1.ResourceRequirements{
+								Limits: corev1.ResourceList{
+									corev1.ResourceCPU:    resource.MustParse("100m"),
+									corev1.ResourceMemory: resource.MustParse("50Mi"),
+								},
+								Requests: corev1.ResourceList{
+									corev1.ResourceCPU:    resource.MustParse("100m"),
+									corev1.ResourceMemory: resource.MustParse("50Mi"),
+								},
+							},
+						},
+						{
+							Name:  "csi-node",
+							Image: csiNodeImg,
+							SecurityContext: &corev1.SecurityContext{
+								Privileged: boolPtr(true),
+							},
+							Args: []string{
+								"--csi-socket=/csi/csi.sock",
+								"--node-name=$(MY_NODE_NAME)",
+								"--rest-endpoint=http://mayastor-api-rest:8081",
+								"--enable-rest",
+								"--enable-registration",
+								"--grpc-ip=$(MY_POD_IP)",
+							},
+							Env: []corev1.EnvVar{
+								{Name: "RUST_LOG", Value: "info"},
+								{Name: "MY_NODE_NAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.nodeName"}}},
+								{Name: "MY_POD_IP", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "status.podIP"}}},
+								{Name: "RUST_BACKTRACE", Value: "1"},
+							},
+							VolumeMounts: []corev1.VolumeMount{
+								{Name: "device", MountPath: "/dev"},
+								{Name: "sys", MountPath: "/sys"},
+								{Name: "run-udev", MountPath: "/run/udev"},
+								{Name: "plugin-dir", MountPath: "/csi"},
+								{Name: "kubelet-dir", MountPath: "/var/lib/kubelet", MountPropagation: &hostpathMountPropagation},
+							},
+						},
+					},
+					Volumes: []corev1.Volume{
+						{Name: "device", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/dev"}}},
+						{Name: "sys", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/sys"}}},
+						{Name: "run-udev", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/run/udev"}}},
+						{Name: "registration-dir", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/var/lib/kubelet/plugins_registry"}}},
+						{Name: "plugin-dir", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: kubeletPluginDir, Type: &hostpathDirOrCreate}}},
+						{Name: "kubelet-dir", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/var/lib/kubelet"}}},
+					},
+				},
+			},
+		},
+	}
+}
+
+func mayastorOperatorDiskpoolDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployment {
+	tag := defaultMayastorTag
+	if instance.Spec.Images != nil && instance.Spec.Images.Mayastor != "" {
+		tag = instance.Spec.Images.Mayastor
+	}
+	img := mayastorImage(tag, "operator-diskpool")
+
+	lbls := labels("mayastor-operator-diskpool")
+	replicas := int32(1)
+	return &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      mayastorDiskpoolName,
+			Namespace: mayastorNamespace,
+			Labels:    lbls,
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &replicas,
+			Selector: &metav1.LabelSelector{MatchLabels: lbls},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Labels: lbls},
+				Spec: corev1.PodSpec{
+					ServiceAccountName: mayastorServiceAccountName,
+					Containers: []corev1.Container{{
+						Name:  "operator-diskpool",
+						Image: img,
+						Args:  []string{"--namespace=$(POD_NAMESPACE)"},
+						Env: []corev1.EnvVar{
+							{Name: "POD_NAMESPACE", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}}},
+						},
+					}},
+				},
+			},
+		},
+	}
+}
+
+func mayastorHANodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSet {
+	tag := defaultMayastorTag
+	if instance.Spec.Images != nil && instance.Spec.Images.Mayastor != "" {
+		tag = instance.Spec.Images.Mayastor
+	}
+	img := mayastorImage(tag, "agent-ha-node")
+
+	lbls := labels("mayastor-ha-node")
+	return &appsv1.DaemonSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      mayastorHANodeName,
+			Namespace: mayastorNamespace,
+			Labels:    lbls,
+		},
+		Spec: appsv1.DaemonSetSpec{
+			Selector: &metav1.LabelSelector{MatchLabels: lbls},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Labels: lbls},
+				Spec: corev1.PodSpec{
+					ServiceAccountName: mayastorServiceAccountName,
+					HostNetwork:        true,
+					Containers: []corev1.Container{{
+						Name:  "agent-ha-node",
+						Image: img,
+						Args: []string{
+							"--grpc-server-addr=[::]:50051",
+							"--namespace=$(POD_NAMESPACE)",
+							"--node=$(NODE_NAME)",
+						},
+						Env: []corev1.EnvVar{
+							{Name: "NODE_NAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.nodeName"}}},
+							{Name: "POD_NAMESPACE", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}}},
+						},
+					}},
+				},
+			},
+		},
+	}
+}
+
+func mayastorCSIDriver() *storagev1.CSIDriver {
+	attachRequired := true
+	podInfoOnMount := true
+	return &storagev1.CSIDriver{
+		ObjectMeta: metav1.ObjectMeta{Name: mayastorCSIDriverName, Labels: labels("mayastor-csidriver")},
+		Spec: storagev1.CSIDriverSpec{
+			AttachRequired: &attachRequired,
+			PodInfoOnMount: &podInfoOnMount,
+			FSGroupPolicy:  &fsGroupPolicyFile,
+		},
+	}
+}
+
+func mayastorStorageClass(name string, instance *storagev1alpha1.OpenEBS) *storagev1.StorageClass {
+	repl := "1"
+	protocol := "nvmf"
+	deletePolicy := corev1.PersistentVolumeReclaimDelete
+	allowExpansion := true
+	return &storagev1.StorageClass{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   name,
+			Labels: labels("mayastor-sc"),
+		},
+		Provisioner:          mayastorCSIDriverName,
+		ReclaimPolicy:        &deletePolicy,
+		VolumeBindingMode:    &volumeBindingWaitForFirstConsumer,
+		AllowVolumeExpansion: &allowExpansion,
+		Parameters: map[string]string{
+			"repl":     repl,
+			"protocol": protocol,
 		},
 	}
 }

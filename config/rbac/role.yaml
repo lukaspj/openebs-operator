@@ -36,6 +36,7 @@ rules:
       - namespaces
       - serviceaccounts
       - configmaps
+      - services
     verbs:
       - create
       - delete
@@ -49,6 +50,7 @@ rules:
     resources:
       - deployments
       - daemonsets
+      - statefulsets
     verbs:
       - create
       - delete

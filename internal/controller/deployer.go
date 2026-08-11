@@ -50,6 +50,22 @@ const (
 	mayastorNamespace  = "mayastor"
 	mayastorLabelKey   = "openebs.io/engine"
 	mayastorLabelValue = "mayastor"
+
+	mayastorServiceAccountName   = "mayastor-service-account"
+	mayastorClusterRoleName      = "mayastor-role"
+	mayastorClusterRoleBindingName = "mayastor-binding"
+	mayastorEtcdName             = "mayastor-etcd"
+	mayastorEtcdServiceName      = "mayastor-etcd"
+	mayastorAgentCoreName        = "mayastor-agent-core"
+	mayastorAPIRestName          = "mayastor-api-rest"
+	mayastorAPIRestServiceName   = "mayastor-api-rest"
+	mayastorCSIControllerName    = "mayastor-csi-controller"
+	mayastorIOEngineName         = "mayastor-io-engine"
+	mayastorCSINodeName          = "mayastor-csi-node"
+	mayastorDiskpoolName         = "mayastor-operator-diskpool"
+	mayastorHANodeName           = "mayastor-agent-ha-node"
+	mayastorCSIDriverName        = "csi.nvmf.openebs.io"
+	mayastorSCName               = "mayastor"
 )
 
 func (d *Deployer) deployLVM(ctx context.Context) storagev1alpha1.EngineStatus {
@@ -213,13 +229,79 @@ func (d *Deployer) deployMayastor(ctx context.Context) storagev1alpha1.EngineSta
 		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
 	}
 
-	// Mayastor deployment is complex. For now, report as installing
-	// to indicate that Mayastor support is pending full implementation.
-	logger.Info("Mayastor engine requested but full operator support is pending")
+	if err := d.applyRBAC(ctx, mayastorServiceAccount(), mayastorClusterRole(), mayastorClusterRoleBinding()); err != nil {
+		logger.Error(err, "failed to apply Mayastor RBAC")
+		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
+	}
+
+	if err := d.apply(ctx, mayastorEtcdService()); err != nil {
+		logger.Error(err, "failed to apply etcd Service")
+		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
+	}
+
+	if err := d.apply(ctx, mayastorEtcdStatefulSet(d.instance)); err != nil {
+		logger.Error(err, "failed to apply etcd StatefulSet")
+		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
+	}
+
+	if err := d.applyDeployment(ctx, mayastorAgentCoreDeployment(d.instance)); err != nil {
+		logger.Error(err, "failed to apply agent-core")
+		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
+	}
+
+	if err := d.apply(ctx, mayastorAPIRestService()); err != nil {
+		logger.Error(err, "failed to apply api-rest Service")
+		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
+	}
+
+	if err := d.applyDeployment(ctx, mayastorAPIRestDeployment(d.instance)); err != nil {
+		logger.Error(err, "failed to apply api-rest")
+		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
+	}
+
+	if err := d.applyDeployment(ctx, mayastorCSIControllerDeployment(d.instance)); err != nil {
+		logger.Error(err, "failed to apply csi-controller")
+		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
+	}
+
+	if err := d.applyDaemonSet(ctx, mayastorIOEngineDaemonSet(d.instance)); err != nil {
+		logger.Error(err, "failed to apply io-engine DaemonSet")
+		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
+	}
+
+	if err := d.applyDaemonSet(ctx, mayastorCSINodeDaemonSet(d.instance)); err != nil {
+		logger.Error(err, "failed to apply csi-node DaemonSet")
+		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
+	}
+
+	if err := d.applyDaemonSet(ctx, mayastorHANodeDaemonSet(d.instance)); err != nil {
+		logger.Error(err, "failed to apply ha-node DaemonSet")
+		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
+	}
+
+	if err := d.applyDeployment(ctx, mayastorOperatorDiskpoolDeployment(d.instance)); err != nil {
+		logger.Error(err, "failed to apply operator-diskpool")
+		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
+	}
+
+	if err := d.applyCSIDriver(ctx, mayastorCSIDriver()); err != nil {
+		logger.Error(err, "failed to apply Mayastor CSIDriver")
+		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
+	}
+
+	scName := mayastorSCName
+	if d.instance.Spec.Mayastor.StorageClassName != "" {
+		scName = d.instance.Spec.Mayastor.StorageClassName
+	}
+	if err := d.applyStorageClass(ctx, mayastorStorageClass(scName, d.instance)); err != nil {
+		logger.Error(err, "failed to apply Mayastor StorageClass")
+		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
+	}
+
 	return storagev1alpha1.EngineStatus{
 		Name:    storagev1alpha1.OpenEBSEngineMayastor,
-		Phase:   storagev1alpha1.OpenEBSPhaseInstalling,
-		Message: "Mayastor operator support is pending; deploy via helm chart manually for now",
+		Phase:   storagev1alpha1.OpenEBSPhaseRunning,
+		Message: "Mayastor engine deployed",
 	}
 }
 
@@ -237,6 +319,16 @@ func (d *Deployer) cleanup(ctx context.Context) error {
 		&storagev1.StorageClass{ObjectMeta: metav1.ObjectMeta{Name: hostpathSCName}},
 		&storagev1.StorageClass{ObjectMeta: metav1.ObjectMeta{Name: zfsSCName}},
 		&storagev1.StorageClass{ObjectMeta: metav1.ObjectMeta{Name: rawfileSCName}},
+		mayastorEtcdStatefulSet(d.instance),
+		mayastorAgentCoreDeployment(d.instance),
+		mayastorAPIRestDeployment(d.instance),
+		mayastorCSIControllerDeployment(d.instance),
+		mayastorIOEngineDaemonSet(d.instance),
+		mayastorCSINodeDaemonSet(d.instance),
+		mayastorHANodeDaemonSet(d.instance),
+		mayastorOperatorDiskpoolDeployment(d.instance),
+		&storagev1.CSIDriver{ObjectMeta: metav1.ObjectMeta{Name: mayastorCSIDriverName}},
+		&storagev1.StorageClass{ObjectMeta: metav1.ObjectMeta{Name: mayastorSCName}},
 	} {
 		if err := d.Delete(ctx, obj); err != nil && !errors.IsNotFound(err) {
 			return err
@@ -381,6 +473,58 @@ func (d *Deployer) cleanupOrphans(ctx context.Context) error {
 		}
 	}
 
+	var mayastorDeps appsv1.DeploymentList
+	if err := d.List(ctx, &mayastorDeps, client.InNamespace(mayastorNamespace), client.MatchingLabels{managedLabel: "openebs-operator"}); err != nil {
+		return err
+	}
+	for _, dep := range mayastorDeps.Items {
+		if !expected[dep.Name] {
+			logger.Info("deleting orphan mayastor Deployment", "name", dep.Name)
+			if err := d.Delete(ctx, &dep); err != nil {
+				return err
+			}
+		}
+	}
+
+	var mayastorDss appsv1.DaemonSetList
+	if err := d.List(ctx, &mayastorDss, client.InNamespace(mayastorNamespace), client.MatchingLabels{managedLabel: "openebs-operator"}); err != nil {
+		return err
+	}
+	for _, ds := range mayastorDss.Items {
+		if !expected[ds.Name] {
+			logger.Info("deleting orphan mayastor DaemonSet", "name", ds.Name)
+			if err := d.Delete(ctx, &ds); err != nil {
+				return err
+			}
+		}
+	}
+
+	var mayastorSts appsv1.StatefulSetList
+	if err := d.List(ctx, &mayastorSts, client.InNamespace(mayastorNamespace), client.MatchingLabels{managedLabel: "openebs-operator"}); err != nil {
+		return err
+	}
+	for _, sts := range mayastorSts.Items {
+		if !expected[sts.Name] {
+			logger.Info("deleting orphan mayastor StatefulSet", "name", sts.Name)
+			if err := d.Delete(ctx, &sts); err != nil {
+				return err
+			}
+		}
+	}
+
+	var mayastorSas corev1.ServiceAccountList
+	if err := d.List(ctx, &mayastorSas, client.InNamespace(mayastorNamespace), client.MatchingLabels{managedLabel: "openebs-operator"}); err != nil {
+		return err
+	}
+	for _, sa := range mayastorSas.Items {
+		if !expected[sa.Name] {
+			logger.Info("deleting orphan mayastor ServiceAccount", "name", sa.Name)
+			if err := d.Delete(ctx, &sa); err != nil {
+				return err
+			}
+		}
+	}
+
 	var crs rbacv1.ClusterRoleList
 	if err := d.List(ctx, &crs, client.MatchingLabels{managedLabel: "openebs-operator"}); err != nil {
 		return err
@@ -477,6 +621,25 @@ func expectedResources(instance *storagev1alpha1.OpenEBS) map[string]bool {
 		resources["openebs-rawfile-provisioner"] = true
 		resources["openebs-rawfile-role"] = true
 		resources["openebs-rawfile-binding"] = true
+	}
+
+	if instance.Spec.Mayastor != nil && instance.Spec.Mayastor.Enabled {
+		resources[mayastorEtcdName] = true
+		resources[mayastorAgentCoreName] = true
+		resources[mayastorAPIRestName] = true
+		resources[mayastorCSIControllerName] = true
+		resources[mayastorIOEngineName] = true
+		resources[mayastorCSINodeName] = true
+		resources[mayastorHANodeName] = true
+		resources[mayastorDiskpoolName] = true
+		resources[mayastorServiceAccountName] = true
+		resources[mayastorClusterRoleName] = true
+		resources[mayastorClusterRoleBindingName] = true
+		resources[mayastorCSIDriverName] = true
+		resources[mayastorSCName] = true
+		if instance.Spec.Mayastor.StorageClassName != "" {
+			resources[instance.Spec.Mayastor.StorageClassName] = true
+		}
 	}
 
 	return resources
