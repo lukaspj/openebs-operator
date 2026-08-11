@@ -96,6 +96,16 @@ go build -o bin/manager ./cmd
 
 Pre-built image: `ghcr.io/lukaspj/openebs-operator:latest`
 
+## E2e tests
+
+Real-cluster end-to-end tests live in `e2e/`. They deploy the operator to a kind cluster and verify engine add/update/remove, etcd upgrades, and CR deletion cleanup.
+
+```sh
+go test -v -tags=e2e -count=1 ./e2e/...
+```
+
+Requires `kubeconfig` pointing to a cluster with the operator deployed. CI runs these on push/PR via `.github/workflows/e2e.yaml`.
+
 ## License
 
 MIT

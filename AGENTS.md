@@ -45,6 +45,7 @@ config/manager/            Deployment manifest for operator
 	deploy/                All-in-one operator.yaml + example CR
 	.ai/skills/             OpenCode project skills
 	e2e/                    Real-cluster e2e tests (kind, engine lifecycle, etcd upgrades)
+	                        Run with `go test -tags=e2e ./e2e/...`
 	.github/workflows/      CI workflows (e2e on push/PR)
 
 ```
