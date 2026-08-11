@@ -59,13 +59,18 @@ const (
 func waitForCRReady(ctx context.Context, t *testing.T, name string) {
 	t.Helper()
 	var cr storagev1alpha1.OpenEBS
+	var lastEngineStates string
 	err := wait.PollUntilContextTimeout(ctx, defaultInterval, defaultTimeout, true, func(ctx context.Context) (bool, error) {
 		if err := k8sClient.Get(ctx, client.ObjectKey{Name: name}, &cr); err != nil {
 			return false, nil
 		}
 		for _, e := range cr.Status.Engines {
 			if e.Phase != "Running" {
-				t.Logf("engine %s: phase=%s message=%s", e.Name, e.Phase, e.Message)
+				detail := fmt.Sprintf("%s: %s: %s", e.Name, e.Phase, e.Message)
+				if detail != lastEngineStates {
+					t.Logf("engine %s: phase=%s message=%s", e.Name, e.Phase, e.Message)
+					lastEngineStates = detail
+				}
 				return false, nil
 			}
 		}
@@ -77,7 +82,7 @@ func waitForCRReady(ctx context.Context, t *testing.T, name string) {
 				t.Logf("FAILED engine: %s: %s", e.Name, e.Message)
 			}
 		}
-		t.Fatalf("CR %s did not reach Running: %v. Status: %+v", name, err, cr.Status)
+		t.Fatalf("CR %s did not reach Running: %v", name, err)
 	}
 }
 

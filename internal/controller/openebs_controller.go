@@ -31,13 +31,15 @@ type OpenEBSReconciler struct {
 // +kubebuilder:rbac:groups=storage.aldershaab-it.dk,resources=openebs/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=storage.aldershaab-it.dk,resources=openebs/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=namespaces;serviceaccounts,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=apps,resources=deployments;daemonsets;statefulsets,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterroles;clusterrolebindings,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=storage.k8s.io,resources=csidrivers;storageclasses,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=snapshot.storage.k8s.io,resources=volumesnapshotclasses,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=pods;nodes;events;persistentvolumes;persistentvolumeclaims;configmaps;secrets;services,verbs=*
+// +kubebuilder:rbac:groups=apps,resources=deployments;daemonsets;statefulsets,verbs=*
+// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterroles;clusterrolebindings,verbs=*
+// +kubebuilder:rbac:groups=storage.k8s.io,resources=csidrivers;storageclasses;csinodes;volumeattachments;csistoragecapacities,verbs=*
+// +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=*
+// +kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=*
+// +kubebuilder:rbac:groups=snapshot.storage.k8s.io,resources=volumesnapshotclasses,verbs=*
+// +kubebuilder:rbac:groups=local.openebs.io,resources=lvmnodes;lvmsnapshots;lvmvolumes;lvmvolumes/status,verbs=*
+// +kubebuilder:rbac:groups=zfs.openebs.io,resources=zfsnodes;zfssnapshots;zfsvolumes;zfsvolumes/status,verbs=*
 
 func (r *OpenEBSReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
