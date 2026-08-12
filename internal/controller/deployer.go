@@ -419,7 +419,12 @@ func (d *Deployer) etcdHealthCheck(ctx context.Context) error {
 }
 
 func (d *Deployer) ensureNamespace(ctx context.Context, name string) error {
-	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: name}}
+	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{
+		Name: name,
+		Labels: map[string]string{
+			"pod-security.kubernetes.io/enforce": "privileged",
+		},
+	}}
 	if _, err := controllerutil.CreateOrUpdate(ctx, d.Client, ns, func() error {
 		return nil
 	}); err != nil {

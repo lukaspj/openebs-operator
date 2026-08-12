@@ -1370,16 +1370,38 @@ func mayastorHANodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSe
 					Containers: []corev1.Container{{
 						Name:  "agent-ha-node",
 						Image: img,
+						SecurityContext: &corev1.SecurityContext{
+							Privileged: boolPtr(true),
+						},
 						Args: []string{
-							"--grpc-server-addr=[::]:50051",
-							"--namespace=$(POD_NAMESPACE)",
-							"--node=$(NODE_NAME)",
+							"--node-name=$(MY_NODE_NAME)",
+							"--csi-socket=/csi/csi.sock",
+							"--grpc-ip=$(MY_POD_IP)",
+							"--grpc-port=50053",
+							"--cluster-agent=https://" + mayastorAgentCoreName + ":50052",
 						},
 						Env: []corev1.EnvVar{
-							{Name: "NODE_NAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.nodeName"}}},
-							{Name: "POD_NAMESPACE", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}}},
+							{Name: "RUST_LOG", Value: "info"},
+							{Name: "MY_NODE_NAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.nodeName"}}},
+							{Name: "MY_POD_IP", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "status.podIP"}}},
+							{Name: "RUST_BACKTRACE", Value: "1"},
+						},
+						Ports: []corev1.ContainerPort{
+							{Name: "ha-node", ContainerPort: 50053, Protocol: corev1.ProtocolTCP},
+						},
+						VolumeMounts: []corev1.VolumeMount{
+							{Name: "device", MountPath: "/dev"},
+							{Name: "sys", MountPath: "/sys"},
+							{Name: "run-udev", MountPath: "/run/udev"},
+							{Name: "plugin-dir", MountPath: "/csi"},
 						},
 					}},
+					Volumes: []corev1.Volume{
+						{Name: "device", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/dev"}}},
+						{Name: "sys", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/sys"}}},
+						{Name: "run-udev", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/run/udev"}}},
+						{Name: "plugin-dir", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/var/lib/kubelet/plugins/io.openebs.mayastor", Type: &hostpathDirOrCreate}}},
+					},
 				},
 			},
 		},

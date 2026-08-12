@@ -11,11 +11,27 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func TestEtcdVersionUpgrade(t *testing.T) {
 	ctx := context.Background()
+
+	stalePVC := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: "data-mayastor-etcd-0", Namespace: mayastorNamespace},
+	}
+	if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(stalePVC), stalePVC); err == nil {
+		if err := k8sClient.Delete(ctx, stalePVC); err != nil {
+			t.Fatalf("delete stale etcd PVC: %v", err)
+		}
+		if err := wait.PollUntilContextTimeout(ctx, defaultInterval, defaultTimeout, true, func(ctx context.Context) (bool, error) {
+			return k8sClient.Get(ctx, client.ObjectKeyFromObject(stalePVC), &corev1.PersistentVolumeClaim{}) != nil, nil
+		}); err != nil {
+			t.Fatalf("stale etcd PVC not deleted: %v", err)
+		}
+	}
+
 	cr := &storagev1alpha1.OpenEBS{
 		ObjectMeta: metav1.ObjectMeta{Name: "e2e-etcd-upgrade"},
 		Spec: storagev1alpha1.OpenEBSSpec{

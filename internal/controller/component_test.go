@@ -1093,6 +1093,32 @@ func TestMayastorHANodeDaemonSet(t *testing.T) {
 	if ds.Namespace != mayastorNamespace {
 		t.Errorf("expected namespace %s, got %s", mayastorNamespace, ds.Namespace)
 	}
+	if len(ds.Spec.Template.Spec.Containers) != 1 {
+		t.Fatalf("expected 1 container, got %d", len(ds.Spec.Template.Spec.Containers))
+	}
+	c := ds.Spec.Template.Spec.Containers[0]
+	wantArgs := []string{
+		"--node-name=$(MY_NODE_NAME)",
+		"--csi-socket=/csi/csi.sock",
+		"--grpc-ip=$(MY_POD_IP)",
+		"--grpc-port=50053",
+		"--cluster-agent=https://" + mayastorAgentCoreName + ":50052",
+	}
+	if !slices.Equal(c.Args, wantArgs) {
+		t.Errorf("expected args %v, got %v", wantArgs, c.Args)
+	}
+	if c.SecurityContext == nil || c.SecurityContext.Privileged == nil || !*c.SecurityContext.Privileged {
+		t.Error("expected privileged securityContext")
+	}
+	if len(c.VolumeMounts) != 4 {
+		t.Errorf("expected 4 volume mounts, got %d", len(c.VolumeMounts))
+	}
+	if len(c.Ports) != 1 || c.Ports[0].ContainerPort != 50053 {
+		t.Errorf("expected port 50053, got %v", c.Ports)
+	}
+	if len(ds.Spec.Template.Spec.Volumes) != 4 {
+		t.Errorf("expected 4 volumes, got %d", len(ds.Spec.Template.Spec.Volumes))
+	}
 }
 
 func TestMayastorCSIDriver(t *testing.T) {

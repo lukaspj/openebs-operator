@@ -32,6 +32,9 @@ func TestDeployerEnsureNamespace(t *testing.T) {
 	if err := cl.Get(ctx, types.NamespacedName{Name: "openebs"}, ns); err != nil {
 		t.Fatalf("namespace not created: %v", err)
 	}
+	if ns.Labels["pod-security.kubernetes.io/enforce"] != "privileged" {
+		t.Errorf("expected PSA enforce=privileged label, got %v", ns.Labels)
+	}
 }
 
 func TestDeployerEnsureNamespaceIdempotent(t *testing.T) {
