@@ -396,7 +396,7 @@ func (d *Deployer) etcdHealthCheck(ctx context.Context) error {
 		return nil
 	}
 	hc := &http.Client{Timeout: 5 * time.Second}
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://mayastor-etcd.mayastor:2379/health", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://mayastor-etcd.mayastor:2379/health", nil)
 	if err != nil {
 		return fmt.Errorf("etcd health request: %w", err)
 	}

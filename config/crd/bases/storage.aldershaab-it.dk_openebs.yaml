@@ -103,6 +103,18 @@ spec:
                           type: string
                         hugepages2Mi:
                           type: string
+                    storageClassName:
+                      type: string
+                      default: "mayastor"
+                    snapshotClassName:
+                      type: string
+                      default: "mayastor-snapshot"
+                    etcdStorageSize:
+                      type: string
+                      default: "10Gi"
+                    etcdStorageClassName:
+                      type: string
+                      default: ""
                   required:
                     - enabled
                 imagePullSecrets:
@@ -131,6 +143,14 @@ spec:
                     csiSnapshotter:
                       type: string
                     csiNodeRegistrar:
+                      type: string
+                    csiAttacher:
+                      type: string
+                    csiSnapshotController:
+                      type: string
+                    mayastor:
+                      type: string
+                    etcd:
                       type: string
             status:
               type: object
