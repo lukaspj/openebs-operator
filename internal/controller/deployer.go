@@ -447,7 +447,20 @@ func (d *Deployer) applyCSIDriver(ctx context.Context, driver *storagev1.CSIDriv
 }
 
 func (d *Deployer) applyStorageClass(ctx context.Context, sc *storagev1.StorageClass) error {
-	return d.apply(ctx, sc)
+	err := d.apply(ctx, sc)
+	if err == nil || !errors.IsInvalid(err) {
+		return err
+	}
+	key := client.ObjectKeyFromObject(sc)
+	existing := &storagev1.StorageClass{}
+	if err := d.Get(ctx, key, existing); err != nil {
+		return err
+	}
+	if err := d.Delete(ctx, existing); err != nil {
+		return err
+	}
+	sc.SetResourceVersion("")
+	return d.Create(ctx, sc)
 }
 
 // apply creates or updates a Kubernetes resource. For CRDs it uses

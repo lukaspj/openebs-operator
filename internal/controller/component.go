@@ -969,7 +969,13 @@ func mayastorAPIRestDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deploy
 					Containers: []corev1.Container{{
 						Name:  "api-rest",
 						Image: img,
-						Args:  []string{"--endpoint=0.0.0.0:8081"},
+						Args: []string{
+							"--dummy-certificates",
+							"--http=[::]:8081",
+							"--no-auth",
+							"--request-timeout=5s",
+							"--core-grpc=https://" + mayastorAgentCoreName + ":50051",
+						},
 						Ports: []corev1.ContainerPort{
 							{Name: "rest", ContainerPort: 8081},
 						},
