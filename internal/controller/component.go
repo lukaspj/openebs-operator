@@ -809,6 +809,7 @@ func mayastorEtcdStatefulSet(instance *storagev1alpha1.OpenEBS) *appsv1.Stateful
 	lbls := labels("mayastor-etcd")
 	pvcLabels := map[string]string{"app": "etcd"}
 	etcdUID := int64(1001)
+	zero := int64(0)
 	pvcSpec := corev1.PersistentVolumeClaimSpec{
 		AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 		Resources: corev1.VolumeResourceRequirements{
@@ -836,6 +837,19 @@ func mayastorEtcdStatefulSet(instance *storagev1alpha1.OpenEBS) *appsv1.Stateful
 					SecurityContext: &corev1.PodSecurityContext{
 						FSGroup: &etcdUID,
 					},
+					InitContainers: []corev1.Container{{
+						Name:  "volume-permissions",
+						Image: "openebs/alpine-bash:4.5.0",
+						Command: []string{
+							"sh", "-c", "chown -R 1001:1001 /bitnami/etcd",
+						},
+						SecurityContext: &corev1.SecurityContext{
+							RunAsUser: &zero,
+						},
+						VolumeMounts: []corev1.VolumeMount{
+							{Name: "data", MountPath: "/bitnami/etcd"},
+						},
+					}},
 					Containers: []corev1.Container{{
 						Name:    "etcd",
 						Image:   etcdImg,

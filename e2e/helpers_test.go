@@ -21,12 +21,14 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	crconfig "sigs.k8s.io/controller-runtime/pkg/client/config"
 )
 
 var k8sClient client.Client
+var clientset *kubernetes.Clientset
 
 func TestMain(m *testing.M) {
 	cfg, err := crconfig.GetConfig()
@@ -44,6 +46,11 @@ func TestMain(m *testing.M) {
 	k8sClient, err = client.New(cfg, client.Options{Scheme: s})
 	if err != nil {
 		panic(fmt.Sprintf("failed to create client: %v", err))
+	}
+
+	clientset, err = kubernetes.NewForConfig(cfg)
+	if err != nil {
+		panic(fmt.Sprintf("failed to create clientset: %v", err))
 	}
 
 	m.Run()
@@ -136,6 +143,10 @@ func waitForStatefulSet(ctx context.Context, t *testing.T, name, namespace strin
 				for _, cs := range p.Status.ContainerStatuses {
 					if !cs.Ready {
 						t.Logf("pod %s container %s ready=%v restartCount=%d state=%+v", p.Name, cs.Name, cs.Ready, cs.RestartCount, cs.State)
+						tail := int64(20)
+						if logs, lerr := clientset.CoreV1().Pods(namespace).GetLogs(p.Name, &corev1.PodLogOptions{Container: cs.Name, TailLines: &tail}).DoRaw(ctx); lerr == nil {
+							t.Logf("pod %s container %s logs:\n%s", p.Name, cs.Name, string(logs))
+						}
 					}
 				}
 			}

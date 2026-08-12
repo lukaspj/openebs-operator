@@ -897,6 +897,16 @@ func TestMayastorEtcdStatefulSet(t *testing.T) {
 	if sc == nil || sc.RunAsUser == nil || *sc.RunAsUser != 1001 {
 		t.Error("expected etcd container securityContext runAsUser=1001")
 	}
+	if len(sts.Spec.Template.Spec.InitContainers) != 1 {
+		t.Fatalf("expected 1 init container, got %d", len(sts.Spec.Template.Spec.InitContainers))
+	}
+	ic := sts.Spec.Template.Spec.InitContainers[0]
+	if ic.Name != "volume-permissions" || ic.Image != "openebs/alpine-bash:4.5.0" {
+		t.Errorf("unexpected init container: %+v", ic)
+	}
+	if ic.SecurityContext == nil || ic.SecurityContext.RunAsUser == nil || *ic.SecurityContext.RunAsUser != 0 {
+		t.Error("expected volume-permissions init container to run as root")
+	}
 }
 
 func TestMayastorEtcdStatefulSetCustomReplicas(t *testing.T) {
