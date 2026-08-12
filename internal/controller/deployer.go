@@ -60,6 +60,7 @@ const (
 	mayastorEtcdName             = "mayastor-etcd"
 	mayastorEtcdServiceName      = "mayastor-etcd"
 	mayastorAgentCoreName        = "mayastor-agent-core"
+	mayastorAgentCoreServiceName = "mayastor-agent-core"
 	mayastorAPIRestName          = "mayastor-api-rest"
 	mayastorAPIRestServiceName   = "mayastor-api-rest"
 	mayastorCSIControllerName    = "mayastor-csi-controller"
@@ -263,6 +264,11 @@ func (d *Deployer) deployMayastor(ctx context.Context) storagev1alpha1.EngineSta
 		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
 	}
 
+	if err := d.apply(ctx, mayastorAgentCoreService()); err != nil {
+		logger.Error(err, "failed to apply agent-core Service")
+		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
+	}
+
 	if err := d.apply(ctx, mayastorAPIRestService()); err != nil {
 		logger.Error(err, "failed to apply api-rest Service")
 		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
@@ -344,6 +350,7 @@ func (d *Deployer) cleanup(ctx context.Context) error {
 		&storagev1.StorageClass{ObjectMeta: metav1.ObjectMeta{Name: rawfileSCName}},
 		mayastorEtcdStatefulSet(d.instance),
 		mayastorAgentCoreDeployment(d.instance),
+		mayastorAgentCoreService(),
 		mayastorAPIRestDeployment(d.instance),
 		mayastorCSIControllerDeployment(d.instance),
 		mayastorIOEngineDaemonSet(d.instance),

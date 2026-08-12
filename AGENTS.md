@@ -58,7 +58,7 @@ config/manager/            Deployment manifest for operator
 | Hostpath | Deployment (1 container: provisioner-localpv) + StorageClass |
 | ZFS | Deployment (3 containers: csi-provisioner, resizer, zfs-plugin) + DaemonSet + CSIDriver + StorageClass |
 | Rawfile | Deployment (1 container: rawfile-provisioner) + StorageClass |
-| Mayastor | 19 resources: etcd StatefulSet+Service, agent-core Deployment (2 containers), api-rest Deployment+Service, csi-controller Deployment (6 containers), io-engine DaemonSet, csi-node DaemonSet (2 containers), ha-node DaemonSet, operator-diskpool Deployment, ServiceAccount, ClusterRole+Binding, CSIDriver, StorageClass, 3 VolumeSnapshot CRDs, VolumeSnapshotClass |
+| Mayastor | 20 resources: etcd StatefulSet+Service, agent-core Deployment+Service (2 containers), api-rest Deployment+Service, csi-controller Deployment (6 containers), io-engine DaemonSet, csi-node DaemonSet (2 containers), ha-node DaemonSet, operator-diskpool Deployment, ServiceAccount, ClusterRole+Binding, CSIDriver, StorageClass, 3 VolumeSnapshot CRDs, VolumeSnapshotClass |
 
 ## Image versions
 

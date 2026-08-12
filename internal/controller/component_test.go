@@ -959,6 +959,22 @@ func TestMayastorAgentCoreDeployment(t *testing.T) {
 	}
 }
 
+func TestMayastorAgentCoreService(t *testing.T) {
+	svc := mayastorAgentCoreService()
+	if svc.Name != mayastorAgentCoreServiceName {
+		t.Errorf("expected name %s, got %s", mayastorAgentCoreServiceName, svc.Name)
+	}
+	if svc.Namespace != mayastorNamespace {
+		t.Errorf("expected namespace %s, got %s", mayastorNamespace, svc.Namespace)
+	}
+	if len(svc.Spec.Ports) != 1 || svc.Spec.Ports[0].Port != 50051 {
+		t.Errorf("expected port 50051, got %v", svc.Spec.Ports)
+	}
+	if svc.Spec.Selector["app.kubernetes.io/component"] != "mayastor-agent-core" {
+		t.Errorf("expected selector component mayastor-agent-core, got %v", svc.Spec.Selector)
+	}
+}
+
 func TestMayastorAPIRestDeployment(t *testing.T) {
 	instance := &storagev1alpha1.OpenEBS{
 		Spec: storagev1alpha1.OpenEBSSpec{

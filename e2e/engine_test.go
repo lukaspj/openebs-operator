@@ -78,6 +78,12 @@ func TestEngineMayastorDeployAndRemove(t *testing.T) {
 
 	waitForStatefulSet(ctx, t, "mayastor-etcd", mayastorNamespace, 1)
 	waitForDeployment(ctx, t, "mayastor-agent-core", mayastorNamespace)
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "mayastor-agent-core", Namespace: mayastorNamespace},
+	}
+	if err := k8sClient.Get(ctx, client.ObjectKeyFromObject(svc), svc); err != nil {
+		t.Fatalf("agent-core Service not found: %v", err)
+	}
 	waitForDeployment(ctx, t, "mayastor-api-rest", mayastorNamespace)
 	waitForDeployment(ctx, t, "mayastor-csi-controller", mayastorNamespace)
 	waitForDeployment(ctx, t, "mayastor-operator-diskpool", mayastorNamespace)

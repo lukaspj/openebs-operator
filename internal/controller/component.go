@@ -945,6 +945,23 @@ func mayastorAgentCoreDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Depl
 	}
 }
 
+func mayastorAgentCoreService() *corev1.Service {
+	lbls := labels("mayastor-agent-core")
+	return &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      mayastorAgentCoreServiceName,
+			Namespace: mayastorNamespace,
+			Labels:    lbls,
+		},
+		Spec: corev1.ServiceSpec{
+			Selector: lbls,
+			Ports: []corev1.ServicePort{
+				{Name: "grpc", Port: 50051},
+			},
+		},
+	}
+}
+
 func mayastorAPIRestDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployment {
 	tag := defaultMayastorTag
 	if instance.Spec.Images != nil && instance.Spec.Images.Mayastor != "" {
