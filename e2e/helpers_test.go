@@ -12,6 +12,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -134,6 +135,31 @@ func resourceExists(ctx context.Context, t *testing.T, obj client.Object) bool {
 	return err == nil
 }
 
+func waitForResourceGone(ctx context.Context, t *testing.T, obj client.Object) {
+	t.Helper()
+	err := wait.PollUntilContextTimeout(ctx, defaultInterval, defaultTimeout, true, func(ctx context.Context) (bool, error) {
+		err := k8sClient.Get(ctx, client.ObjectKeyFromObject(obj), obj)
+		return apierrors.IsNotFound(err), nil
+	})
+	if err != nil {
+		t.Fatalf("resource %s/%s still exists: %v", obj.GetObjectKind().GroupVersionKind().Kind, obj.GetName(), err)
+	}
+}
+
+func waitForStatefulSetReplicas(ctx context.Context, t *testing.T, name, namespace string, replicas int32) {
+	t.Helper()
+	sts := &appsv1.StatefulSet{}
+	err := wait.PollUntilContextTimeout(ctx, defaultInterval, defaultTimeout, true, func(ctx context.Context) (bool, error) {
+		if err := k8sClient.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, sts); err != nil {
+			return false, nil
+		}
+		return *sts.Spec.Replicas == replicas, nil
+	})
+	if err != nil {
+		t.Fatalf("statefulset %s/%s did not reach %d replicas: %v", namespace, name, replicas, err)
+	}
+}
+
 func createCR(ctx context.Context, t *testing.T, cr *storagev1alpha1.OpenEBS) {
 	t.Helper()
 	existing := &storagev1alpha1.OpenEBS{}
@@ -145,6 +171,13 @@ func createCR(ctx context.Context, t *testing.T, cr *storagev1alpha1.OpenEBS) {
 	}
 	if err := k8sClient.Create(ctx, cr); err != nil {
 		t.Fatalf("create CR: %v", err)
+	}
+	if cr.Name != crName {
+		t.Cleanup(func() {
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
+			defer cancel()
+			cleanupCR(cleanupCtx, t, cr.Name)
+		})
 	}
 }
 
@@ -165,7 +198,7 @@ func deleteCR(ctx context.Context, t *testing.T, name string) {
 	cr := &storagev1alpha1.OpenEBS{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
 	}
-	if err := k8sClient.Delete(ctx, cr); err != nil {
+	if err := k8sClient.Delete(ctx, cr); err != nil && !apierrors.IsNotFound(err) {
 		t.Fatalf("delete CR: %v", err)
 	}
 	err := wait.PollUntilContextTimeout(ctx, defaultInterval, defaultTimeout, true, func(ctx context.Context) (bool, error) {
@@ -177,6 +210,22 @@ func deleteCR(ctx context.Context, t *testing.T, name string) {
 	if err != nil {
 		t.Fatalf("CR not deleted: %v", err)
 	}
+}
+
+func cleanupCR(ctx context.Context, t *testing.T, name string) {
+	t.Helper()
+	cr := &storagev1alpha1.OpenEBS{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+	}
+	if err := k8sClient.Delete(ctx, cr); err != nil && !apierrors.IsNotFound(err) {
+		t.Logf("cleanup delete CR %s: %v", name, err)
+	}
+	_ = wait.PollUntilContextTimeout(ctx, defaultInterval, defaultTimeout, true, func(ctx context.Context) (bool, error) {
+		if err := k8sClient.Get(ctx, client.ObjectKey{Name: name}, &storagev1alpha1.OpenEBS{}); err != nil {
+			return true, nil
+		}
+		return false, nil
+	})
 }
 
 func gvk(g, v, k string) schema.GroupVersionKind {

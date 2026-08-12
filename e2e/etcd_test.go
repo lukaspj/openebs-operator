@@ -19,10 +19,10 @@ func TestEtcdVersionUpgrade(t *testing.T) {
 	cr := &storagev1alpha1.OpenEBS{
 		ObjectMeta: metav1.ObjectMeta{Name: "e2e-etcd-upgrade"},
 		Spec: storagev1alpha1.OpenEBSSpec{
-			Mayastor: &storagev1alpha1.MayastorConfig{Enabled: true},
-			Images: &storagev1alpha1.ImageConfig{
-				Etcd: "openebs/etcd:3.5.15-debian-12-r0",
-			},
+		Mayastor: &storagev1alpha1.MayastorConfig{Enabled: true},
+		Images: &storagev1alpha1.ImageConfig{
+			Etcd: "openebs/etcd:3.5.6-debian-11-r10",
+		},
 		},
 	}
 	createCR(ctx, t, cr)
@@ -33,8 +33,8 @@ func TestEtcdVersionUpgrade(t *testing.T) {
 	if err := k8sClient.Get(ctx, client.ObjectKey{Name: "mayastor-etcd", Namespace: mayastorNamespace}, sts); err != nil {
 		t.Fatalf("get etcd STS: %v", err)
 	}
-	if sts.Spec.Template.Spec.Containers[0].Image != "openebs/etcd:3.5.15-debian-12-r0" {
-		t.Errorf("expected etcd image 3.5.15, got %s", sts.Spec.Template.Spec.Containers[0].Image)
+	if sts.Spec.Template.Spec.Containers[0].Image != "openebs/etcd:3.5.6-debian-11-r10" {
+		t.Errorf("expected etcd image 3.5.6, got %s", sts.Spec.Template.Spec.Containers[0].Image)
 	}
 
 	updateCR(ctx, t, "e2e-etcd-upgrade", func(cr *storagev1alpha1.OpenEBS) {
@@ -77,13 +77,7 @@ func TestEtcdReplicaScaleUp(t *testing.T) {
 	})
 	waitForCRReady(ctx, t, "e2e-etcd-scale")
 
-	upgraded := &appsv1.StatefulSet{}
-	if err := k8sClient.Get(ctx, client.ObjectKey{Name: "mayastor-etcd", Namespace: mayastorNamespace}, upgraded); err != nil {
-		t.Fatalf("get scaled etcd: %v", err)
-	}
-	if *upgraded.Spec.Replicas != 2 {
-		t.Errorf("expected 2 replicas after scale-up, got %d", *upgraded.Spec.Replicas)
-	}
+	waitForStatefulSetReplicas(ctx, t, "mayastor-etcd", mayastorNamespace, 2)
 
 	deleteCR(ctx, t, "e2e-etcd-scale")
 }

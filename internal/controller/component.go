@@ -511,11 +511,11 @@ func zfsControllerDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployme
 						{
 							Name:  "zfs-plugin",
 							Image: zfsPluginImg,
-							Args:  []string{"--endpoint=$(CSI_ENDPOINT)", "--nodeid=$(OPENEBS_NODE_ID)"},
+							Args:  []string{"--endpoint=$(OPENEBS_CSI_ENDPOINT)", "--plugin=$(OPENEBS_CONTROLLER_DRIVER)"},
 							Env: []corev1.EnvVar{
 								{Name: "OPENEBS_NAMESPACE", Value: openebsNamespace},
-								{Name: "CSI_ENDPOINT", Value: "unix:///var/lib/csi/sockets/pluginproxy/csi.sock"},
-								{Name: "OPENEBS_NODE_ID", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.nodeName"}}},
+								{Name: "OPENEBS_CONTROLLER_DRIVER", Value: "controller"},
+								{Name: "OPENEBS_CSI_ENDPOINT", Value: "unix:///var/lib/csi/sockets/pluginproxy/csi.sock"},
 								{Name: "OPENEBS_IO_INSTALLER_TYPE", Value: "openebs-operator"},
 							},
 							VolumeMounts: []corev1.VolumeMount{
@@ -582,11 +582,12 @@ func zfsNodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSet {
 								},
 								AllowPrivilegeEscalation: boolPtr(true),
 							},
-							Args: []string{"--endpoint=$(CSI_ENDPOINT)", "--nodeid=$(OPENEBS_NODE_ID)"},
+							Args: []string{"--nodename=$(OPENEBS_NODE_NAME)", "--endpoint=$(OPENEBS_CSI_ENDPOINT)", "--plugin=$(OPENEBS_NODE_DRIVER)"},
 							Env: []corev1.EnvVar{
-								{Name: "OPENEBS_NODE_ID", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.nodeName"}}},
+								{Name: "OPENEBS_NODE_NAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.nodeName"}}},
+								{Name: "OPENEBS_NODE_DRIVER", Value: "agent"},
 								{Name: "OPENEBS_NAMESPACE", Value: openebsNamespace},
-								{Name: "CSI_ENDPOINT", Value: "unix:///plugin/csi.sock"},
+								{Name: "OPENEBS_CSI_ENDPOINT", Value: "unix:///plugin/csi.sock"},
 								{Name: "OPENEBS_IO_INSTALLER_TYPE", Value: "openebs-operator"},
 							},
 							VolumeMounts: []corev1.VolumeMount{

@@ -39,9 +39,7 @@ func TestEngineDisableLVM(t *testing.T) {
 	dep := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Name: "openebs-lvm-controller", Namespace: "openebs"},
 	}
-	if resourceExists(ctx, t, dep) {
-		t.Error("LVM deployment should be removed after disabling")
-	}
+	waitForResourceGone(ctx, t, dep)
 }
 
 func TestEngineReEnableLVM(t *testing.T) {
@@ -68,9 +66,7 @@ func TestEngineAddRemoveZFS(t *testing.T) {
 	dep := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Name: "openebs-zfs-controller", Namespace: "openebs"},
 	}
-	if resourceExists(ctx, t, dep) {
-		t.Error("ZFS deployment should be removed")
-	}
+	waitForResourceGone(ctx, t, dep)
 }
 
 func TestEngineMayastorDeployAndRemove(t *testing.T) {
@@ -107,9 +103,7 @@ func TestEngineMayastorDeployAndRemove(t *testing.T) {
 	dep := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{Name: "mayastor-agent-core", Namespace: mayastorNamespace},
 	}
-	if resourceExists(ctx, t, dep) {
-		t.Error("agent-core should be removed after disabling mayastor")
-	}
+	waitForResourceGone(ctx, t, dep)
 }
 
 func TestMayastorStorageClassCustomName(t *testing.T) {

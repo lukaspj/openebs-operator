@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -13,6 +14,18 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
+
+func envMap(env []corev1.EnvVar) map[string]string {
+	m := make(map[string]string, len(env))
+	for _, e := range env {
+		if e.Value != "" {
+			m[e.Name] = e.Value
+		} else if e.ValueFrom != nil {
+			m[e.Name] = "<valueFrom>"
+		}
+	}
+	return m
+}
 
 func TestLVMServiceAccount(t *testing.T) {
 	sa := lvmServiceAccount()
@@ -247,6 +260,24 @@ func TestZFSDeployment(t *testing.T) {
 	if len(dep.Spec.Template.Spec.Containers) != 3 {
 		t.Errorf("expected 3 containers, got %d", len(dep.Spec.Template.Spec.Containers))
 	}
+	plugin := dep.Spec.Template.Spec.Containers[2]
+	if plugin.Name != "zfs-plugin" {
+		t.Fatalf("expected zfs-plugin container, got %s", plugin.Name)
+	}
+	expectedArgs := []string{"--endpoint=$(OPENEBS_CSI_ENDPOINT)", "--plugin=$(OPENEBS_CONTROLLER_DRIVER)"}
+	if !slices.Equal(plugin.Args, expectedArgs) {
+		t.Errorf("expected args %v, got %v", expectedArgs, plugin.Args)
+	}
+	env := envMap(plugin.Env)
+	if env["OPENEBS_CONTROLLER_DRIVER"] != "controller" {
+		t.Errorf("expected OPENEBS_CONTROLLER_DRIVER=controller, got %q", env["OPENEBS_CONTROLLER_DRIVER"])
+	}
+	if env["OPENEBS_CSI_ENDPOINT"] != "unix:///var/lib/csi/sockets/pluginproxy/csi.sock" {
+		t.Errorf("expected controller CSI endpoint, got %q", env["OPENEBS_CSI_ENDPOINT"])
+	}
+	if _, ok := env["OPENEBS_NODE_ID"]; ok {
+		t.Error("OPENEBS_NODE_ID must not be set on controller plugin")
+	}
 }
 
 func TestZFSNodeDaemonSet(t *testing.T) {
@@ -262,6 +293,28 @@ func TestZFSNodeDaemonSet(t *testing.T) {
 	}
 	if len(ds.Spec.Template.Spec.Containers) != 2 {
 		t.Errorf("expected 2 containers, got %d", len(ds.Spec.Template.Spec.Containers))
+	}
+	plugin := ds.Spec.Template.Spec.Containers[1]
+	if plugin.Name != "zfs-node-plugin" {
+		t.Fatalf("expected zfs-node-plugin container, got %s", plugin.Name)
+	}
+	expectedArgs := []string{"--nodename=$(OPENEBS_NODE_NAME)", "--endpoint=$(OPENEBS_CSI_ENDPOINT)", "--plugin=$(OPENEBS_NODE_DRIVER)"}
+	if !slices.Equal(plugin.Args, expectedArgs) {
+		t.Errorf("expected args %v, got %v", expectedArgs, plugin.Args)
+	}
+	env := envMap(plugin.Env)
+	if env["OPENEBS_NODE_DRIVER"] != "agent" {
+		t.Errorf("expected OPENEBS_NODE_DRIVER=agent, got %q", env["OPENEBS_NODE_DRIVER"])
+	}
+	if env["OPENEBS_CSI_ENDPOINT"] != "unix:///plugin/csi.sock" {
+		t.Errorf("expected node CSI endpoint, got %q", env["OPENEBS_CSI_ENDPOINT"])
+	}
+	nodeName := env["OPENEBS_NODE_NAME"]
+	if nodeName == "" {
+		t.Error("OPENEBS_NODE_NAME must be set on node plugin")
+	}
+	if _, ok := env["OPENEBS_NODE_ID"]; ok {
+		t.Error("OPENEBS_NODE_ID must not be set on node plugin")
 	}
 }
 
