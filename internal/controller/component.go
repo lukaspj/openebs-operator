@@ -808,6 +808,7 @@ func mayastorEtcdStatefulSet(instance *storagev1alpha1.OpenEBS) *appsv1.Stateful
 
 	lbls := labels("mayastor-etcd")
 	pvcLabels := map[string]string{"app": "etcd"}
+	etcdUID := int64(1001)
 	pvcSpec := corev1.PersistentVolumeClaimSpec{
 		AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 		Resources: corev1.VolumeResourceRequirements{
@@ -832,10 +833,16 @@ func mayastorEtcdStatefulSet(instance *storagev1alpha1.OpenEBS) *appsv1.Stateful
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{Labels: lbls},
 				Spec: corev1.PodSpec{
+					SecurityContext: &corev1.PodSecurityContext{
+						FSGroup: &etcdUID,
+					},
 					Containers: []corev1.Container{{
 						Name:    "etcd",
 						Image:   etcdImg,
 						Command: []string{"etcd"},
+						SecurityContext: &corev1.SecurityContext{
+							RunAsUser: &etcdUID,
+						},
 						Args: []string{
 							"--listen-client-urls=http://0.0.0.0:2379",
 							"--advertise-client-urls=http://$(POD_NAME).mayastor-etcd:2379",

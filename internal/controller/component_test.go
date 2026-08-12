@@ -890,6 +890,13 @@ func TestMayastorEtcdStatefulSet(t *testing.T) {
 	if env == nil || env.Value != "/bitnami/etcd/data" {
 		t.Error("expected ETCD_DATA_DIR=/bitnami/etcd/data")
 	}
+	if sts.Spec.Template.Spec.SecurityContext == nil || sts.Spec.Template.Spec.SecurityContext.FSGroup == nil || *sts.Spec.Template.Spec.SecurityContext.FSGroup != 1001 {
+		t.Error("expected pod securityContext fsGroup=1001")
+	}
+	sc := sts.Spec.Template.Spec.Containers[0].SecurityContext
+	if sc == nil || sc.RunAsUser == nil || *sc.RunAsUser != 1001 {
+		t.Error("expected etcd container securityContext runAsUser=1001")
+	}
 }
 
 func TestMayastorEtcdStatefulSetCustomReplicas(t *testing.T) {

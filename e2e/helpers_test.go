@@ -10,6 +10,7 @@ import (
 
 	storagev1alpha1 "github.com/aldershaab-it/openebs-operator/api/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -125,6 +126,20 @@ func waitForStatefulSet(ctx context.Context, t *testing.T, name, namespace strin
 		return sts.Status.ReadyReplicas >= replicas, nil
 	})
 	if err != nil {
+		pods := &corev1.PodList{}
+		if lerr := k8sClient.List(ctx, pods, client.InNamespace(namespace)); lerr == nil {
+			for i := range pods.Items {
+				p := &pods.Items[i]
+				if p.Status.Phase != corev1.PodRunning {
+					t.Logf("pod %s/%s phase=%s", p.Namespace, p.Name, p.Status.Phase)
+				}
+				for _, cs := range p.Status.ContainerStatuses {
+					if !cs.Ready {
+						t.Logf("pod %s container %s ready=%v restartCount=%d state=%+v", p.Name, cs.Name, cs.Ready, cs.RestartCount, cs.State)
+					}
+				}
+			}
+		}
 		t.Fatalf("statefulset %s/%s not ready: %v", namespace, name, err)
 	}
 }
