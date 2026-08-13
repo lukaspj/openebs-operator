@@ -37,6 +37,35 @@ func TestDeployerEnsureNamespace(t *testing.T) {
 	}
 }
 
+func TestDeployerEnsureNamespaceRepairsExisting(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+
+	existing := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "openebs",
+			Labels: map[string]string{
+				"pod-security.kubernetes.io/enforce": "baseline",
+			},
+		},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existing).Build()
+	d := &Deployer{Client: cl, Scheme: scheme}
+
+	ctx := context.Background()
+	if err := d.ensureNamespace(ctx, "openebs"); err != nil {
+		t.Fatalf("ensureNamespace failed: %v", err)
+	}
+
+	ns := &corev1.Namespace{}
+	if err := cl.Get(ctx, types.NamespacedName{Name: "openebs"}, ns); err != nil {
+		t.Fatalf("namespace not found: %v", err)
+	}
+	if ns.Labels["pod-security.kubernetes.io/enforce"] != "privileged" {
+		t.Errorf("expected PSA enforce=privileged label on existing namespace, got %v", ns.Labels)
+	}
+}
+
 func TestDeployerEnsureNamespaceIdempotent(t *testing.T) {
 	scheme := runtime.NewScheme()
 	_ = corev1.AddToScheme(scheme)

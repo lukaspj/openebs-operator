@@ -426,6 +426,10 @@ func (d *Deployer) ensureNamespace(ctx context.Context, name string) error {
 		},
 	}}
 	if _, err := controllerutil.CreateOrUpdate(ctx, d.Client, ns, func() error {
+		if ns.Labels == nil {
+			ns.Labels = map[string]string{}
+		}
+		ns.Labels["pod-security.kubernetes.io/enforce"] = "privileged"
 		return nil
 	}); err != nil {
 		return err
