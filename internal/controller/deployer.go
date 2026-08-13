@@ -81,6 +81,11 @@ func (d *Deployer) deployLVM(ctx context.Context) storagev1alpha1.EngineStatus {
 		return d.engineFailed(storagev1alpha1.OpenEBSEngineLVM, err)
 	}
 
+	if err := d.applyLVMCRDs(ctx); err != nil {
+		logger.Error(err, "failed to apply LVM CRDs")
+		return d.engineFailed(storagev1alpha1.OpenEBSEngineLVM, err)
+	}
+
 	if err := d.applyRBAC(ctx, lvmServiceAccount(), lvmClusterRole(), lvmClusterRoleBinding()); err != nil {
 		logger.Error(err, "failed to apply LVM RBAC")
 		return d.engineFailed(storagev1alpha1.OpenEBSEngineLVM, err)
@@ -156,6 +161,11 @@ func (d *Deployer) deployZFS(ctx context.Context) storagev1alpha1.EngineStatus {
 
 	if err := d.ensureNamespace(ctx, openebsNamespace); err != nil {
 		logger.Error(err, "failed to create openebs namespace")
+		return d.engineFailed(storagev1alpha1.OpenEBSEngineZFS, err)
+	}
+
+	if err := d.applyZFSCRDs(ctx); err != nil {
+		logger.Error(err, "failed to apply ZFS CRDs")
 		return d.engineFailed(storagev1alpha1.OpenEBSEngineZFS, err)
 	}
 
@@ -365,6 +375,36 @@ func (d *Deployer) cleanup(ctx context.Context) error {
 		mayastorOperatorDiskpoolDeployment(d.instance),
 		&storagev1.CSIDriver{ObjectMeta: metav1.ObjectMeta{Name: mayastorCSIDriverName}},
 		&storagev1.StorageClass{ObjectMeta: metav1.ObjectMeta{Name: mayastorSCName}},
+		&unstructured.Unstructured{Object: map[string]interface{}{
+			"apiVersion": "apiextensions.k8s.io/v1",
+			"kind":       "CustomResourceDefinition",
+			"metadata":   map[string]interface{}{"name": "lvmnodes.local.openebs.io"},
+		}},
+		&unstructured.Unstructured{Object: map[string]interface{}{
+			"apiVersion": "apiextensions.k8s.io/v1",
+			"kind":       "CustomResourceDefinition",
+			"metadata":   map[string]interface{}{"name": "lvmvolumes.local.openebs.io"},
+		}},
+		&unstructured.Unstructured{Object: map[string]interface{}{
+			"apiVersion": "apiextensions.k8s.io/v1",
+			"kind":       "CustomResourceDefinition",
+			"metadata":   map[string]interface{}{"name": "lvmsnapshots.local.openebs.io"},
+		}},
+		&unstructured.Unstructured{Object: map[string]interface{}{
+			"apiVersion": "apiextensions.k8s.io/v1",
+			"kind":       "CustomResourceDefinition",
+			"metadata":   map[string]interface{}{"name": "zfsnodes.zfs.openebs.io"},
+		}},
+		&unstructured.Unstructured{Object: map[string]interface{}{
+			"apiVersion": "apiextensions.k8s.io/v1",
+			"kind":       "CustomResourceDefinition",
+			"metadata":   map[string]interface{}{"name": "zfsvolumes.zfs.openebs.io"},
+		}},
+		&unstructured.Unstructured{Object: map[string]interface{}{
+			"apiVersion": "apiextensions.k8s.io/v1",
+			"kind":       "CustomResourceDefinition",
+			"metadata":   map[string]interface{}{"name": "zfssnapshots.zfs.openebs.io"},
+		}},
 		&unstructured.Unstructured{Object: map[string]interface{}{
 			"apiVersion": "apiextensions.k8s.io/v1",
 			"kind":       "CustomResourceDefinition",

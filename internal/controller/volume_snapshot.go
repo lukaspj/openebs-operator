@@ -6,7 +6,6 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/serializer/yaml"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -20,17 +19,7 @@ var volumeSnapshotCRDYAML []byte
 var volumeSnapshotContentCRDYAML []byte
 
 func (d *Deployer) applyVolumeSnapshotCRDs(ctx context.Context) error {
-	decoder := yaml.NewDecodingSerializer(unstructured.UnstructuredJSONScheme)
-	for _, yamlBytes := range [][]byte{volumeSnapshotClassCRDYAML, volumeSnapshotCRDYAML, volumeSnapshotContentCRDYAML} {
-		obj := &unstructured.Unstructured{}
-		if _, _, err := decoder.Decode(yamlBytes, nil, obj); err != nil {
-			return err
-		}
-		if err := d.applyUnstructured(ctx, obj); err != nil {
-			return err
-		}
-	}
-	return nil
+	return d.applyCRDs(ctx, [][]byte{volumeSnapshotClassCRDYAML, volumeSnapshotCRDYAML, volumeSnapshotContentCRDYAML})
 }
 
 func (d *Deployer) applyUnstructured(ctx context.Context, obj *unstructured.Unstructured) error {
