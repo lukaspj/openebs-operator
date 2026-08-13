@@ -57,6 +57,7 @@ func TestEtcdVersionUpgrade(t *testing.T) {
 		cr.Spec.Images.Etcd = "openebs/etcd:3.6.4-debian-12-r0"
 	})
 	waitForCRReady(ctx, t, "e2e-etcd-upgrade")
+	waitForStatefulSetImage(ctx, t, "mayastor-etcd", mayastorNamespace, "openebs/etcd:3.6.4-debian-12-r0")
 
 	upgraded := &appsv1.StatefulSet{}
 	if err := k8sClient.Get(ctx, client.ObjectKey{Name: "mayastor-etcd", Namespace: mayastorNamespace}, upgraded); err != nil {

@@ -172,6 +172,24 @@ func waitForResourceGone(ctx context.Context, t *testing.T, obj client.Object) {
 	}
 }
 
+func waitForStatefulSetImage(ctx context.Context, t *testing.T, name, namespace, image string) {
+	t.Helper()
+	sts := &appsv1.StatefulSet{}
+	err := wait.PollUntilContextTimeout(ctx, defaultInterval, defaultTimeout, true, func(ctx context.Context) (bool, error) {
+		if err := k8sClient.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, sts); err != nil {
+			return false, nil
+		}
+		return len(sts.Spec.Template.Spec.Containers) > 0 && sts.Spec.Template.Spec.Containers[0].Image == image, nil
+	})
+	if err != nil {
+		current := ""
+		if len(sts.Spec.Template.Spec.Containers) > 0 {
+			current = sts.Spec.Template.Spec.Containers[0].Image
+		}
+		t.Fatalf("statefulset %s/%s did not reach image %s (current: %s): %v", namespace, name, image, current, err)
+	}
+}
+
 func waitForStatefulSetReplicas(ctx context.Context, t *testing.T, name, namespace string, replicas int32) {
 	t.Helper()
 	sts := &appsv1.StatefulSet{}
