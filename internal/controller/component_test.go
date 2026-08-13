@@ -114,11 +114,16 @@ func TestLVMNodeDaemonSet(t *testing.T) {
 	if ds.Name != lvmNodeName {
 		t.Errorf("expected name %s, got %s", lvmNodeName, ds.Name)
 	}
-	if !ds.Spec.Template.Spec.HostNetwork {
-		t.Error("expected hostNetwork to be true")
+	if ds.Spec.Template.Spec.HostNetwork {
+		t.Error("expected hostNetwork to be false")
 	}
 	if len(ds.Spec.Template.Spec.Containers) != 2 {
 		t.Errorf("expected 2 containers, got %d", len(ds.Spec.Template.Spec.Containers))
+	}
+
+	registrar := ds.Spec.Template.Spec.Containers[0]
+	if registrar.Lifecycle == nil || registrar.Lifecycle.PreStop == nil {
+		t.Error("expected registrar preStop lifecycle to clean up registration")
 	}
 
 	lvmPlugin := ds.Spec.Template.Spec.Containers[1]
@@ -316,6 +321,60 @@ func TestZFSNodeDaemonSet(t *testing.T) {
 	if _, ok := env["OPENEBS_NODE_ID"]; ok {
 		t.Error("OPENEBS_NODE_ID must not be set on node plugin")
 	}
+	if env["ALLOWED_TOPOLOGIES"] != "All" {
+		t.Errorf("expected ALLOWED_TOPOLOGIES=All, got %q", env["ALLOWED_TOPOLOGIES"])
+	}
+
+	mounts := map[string]string{}
+	for _, m := range plugin.VolumeMounts {
+		mounts[m.Name] = m.MountPath
+	}
+	if mounts["chroot-zfs"] != "/sbin/zfs" {
+		t.Errorf("chroot-zfs mount: want /sbin/zfs, got %q", mounts["chroot-zfs"])
+	}
+	if mounts["host-root"] != "/host" {
+		t.Errorf("host-root mount: want /host, got %q", mounts["host-root"])
+	}
+	if mounts["encr-keys"] != "/home/keys" {
+		t.Errorf("encr-keys mount: want /home/keys, got %q", mounts["encr-keys"])
+	}
+
+	volumeNames := map[string]bool{}
+	for _, v := range ds.Spec.Template.Spec.Volumes {
+		volumeNames[v.Name] = true
+	}
+	for _, want := range []string{"chroot-zfs", "host-root", "encr-keys", "device-dir", "plugin-dir", "registration-dir", "pods-mount-dir"} {
+		if !volumeNames[want] {
+			t.Errorf("expected volume %s, not found", want)
+		}
+	}
+
+	registrar := ds.Spec.Template.Spec.Containers[0]
+	if registrar.Lifecycle == nil || registrar.Lifecycle.PreStop == nil {
+		t.Error("expected registrar preStop lifecycle to clean up registration")
+	}
+	if ds.Spec.UpdateStrategy.Type != appsv1.RollingUpdateDaemonSetStrategyType {
+		t.Errorf("expected RollingUpdate strategy, got %v", ds.Spec.UpdateStrategy.Type)
+	}
+}
+
+func TestZFSBinConfigMap(t *testing.T) {
+	cm := zfsBinConfigMap()
+	if cm.Name != "openebs-zfspv-bin" {
+		t.Errorf("expected name openebs-zfspv-bin, got %s", cm.Name)
+	}
+	if cm.Namespace != openebsNamespace {
+		t.Errorf("expected namespace %s, got %s", openebsNamespace, cm.Namespace)
+	}
+	script, ok := cm.Data["zfs"]
+	if !ok {
+		t.Fatal("expected zfs key in configmap data")
+	}
+	for _, want := range []string{"/host/sbin/zfs", "/host/usr/sbin/zfs", "chroot /host"} {
+		if !strings.Contains(script, want) {
+			t.Errorf("expected script to contain %q", want)
+		}
+	}
 }
 
 func TestRawfileDeployment(t *testing.T) {
@@ -511,7 +570,7 @@ func TestAllResourceConstructors(t *testing.T) {
 
 	t.Run("LVM resources", func(t *testing.T) {
 		assertDeployment(t, lvmControllerDeployment(instance), lvmControllerName, openebsNamespace, "openebs-lvm-controller", 1, 4)
-		assertDaemonSet(t, lvmNodeDaemonSet(instance), lvmNodeName, openebsNamespace, true)
+		assertDaemonSet(t, lvmNodeDaemonSet(instance), lvmNodeName, openebsNamespace, false)
 		assertCSIDriver(t, lvmCSIDriver(), lvmCSIDriverName, true)
 		assertStorageClass(t, lvmStorageClass("openebs-lvm", instance.Spec.LVM), "openebs-lvm", lvmCSIDriverName)
 	})

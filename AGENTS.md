@@ -89,8 +89,40 @@ When engine image defaults change, verify constructs match the upstream Helm cha
 | LVM       | openebs/lvm-localpv                   | release/X.Y     |
 | Hostpath  | openebs/dynamic-localpv-provisioner   | release/X.Y     |
 | ZFS       | openebs/zfs-localpv                   | release/X.Y     |
-| Rawfile   | openebs/rawfile-localpv               | release/X.Y     |
-| Mayastor  | openebs/mayastor-extensions           | develop         |
+| Rawfile   | openebs/rawfile-localpv               | develop (no release branches — chart lives on develop only) |
+| Mayastor  | openebs/mayastor-extensions           | release/X.Y (chart under `chart/` in repo root) |
+
+Chart files (all on `raw.githubusercontent.com/openebs/<repo>/refs/heads/<branch>`):
+
+**LVM** (`openebs/lvm-localpv`, e.g. `release/1.9`, path `deploy/helm/charts/`):
+- `https://raw.githubusercontent.com/openebs/lvm-localpv/refs/heads/release/1.9/deploy/helm/charts/values.yaml`
+- `https://raw.githubusercontent.com/openebs/lvm-localpv/refs/heads/release/1.9/deploy/helm/charts/templates/lvm-controller.yaml`
+- `https://raw.githubusercontent.com/openebs/lvm-localpv/refs/heads/release/1.9/deploy/helm/charts/templates/lvm-node.yaml`
+
+**Hostpath** (`openebs/dynamic-localpv-provisioner`, e.g. `release/4.5`, path `deploy/helm/charts/`):
+- `https://raw.githubusercontent.com/openebs/dynamic-localpv-provisioner/refs/heads/release/4.5/deploy/helm/charts/values.yaml`
+- `https://raw.githubusercontent.com/openebs/dynamic-localpv-provisioner/refs/heads/release/4.5/deploy/helm/charts/templates/deployment.yaml`
+
+**ZFS** (`openebs/zfs-localpv`, e.g. `release/2.10`, path `deploy/helm/charts/`):
+- `https://raw.githubusercontent.com/openebs/zfs-localpv/refs/heads/release/2.10/deploy/helm/charts/values.yaml`
+- `https://raw.githubusercontent.com/openebs/zfs-localpv/refs/heads/release/2.10/deploy/helm/charts/templates/zfs-controller.yaml`
+- `https://raw.githubusercontent.com/openebs/zfs-localpv/refs/heads/release/2.10/deploy/helm/charts/templates/zfs-node.yaml`
+
+**Rawfile** (`openebs/rawfile-localpv`, branch `develop`, path `deploy/helm/rawfile-localpv/` — note extra subdir):
+- `https://raw.githubusercontent.com/openebs/rawfile-localpv/refs/heads/develop/deploy/helm/rawfile-localpv/values.yaml`
+- `https://raw.githubusercontent.com/openebs/rawfile-localpv/refs/heads/develop/deploy/helm/rawfile-localpv/templates/deployment.yaml`
+
+**Mayastor** (`openebs/mayastor-extensions`, e.g. `release/2.11`, path `chart/` in repo root; etcd is a subchart — skip):
+- `https://raw.githubusercontent.com/openebs/mayastor-extensions/refs/heads/release/2.11/chart/values.yaml`
+- `https://raw.githubusercontent.com/openebs/mayastor-extensions/refs/heads/release/2.11/chart/templates/io-engine-daemonset.yaml`
+- `https://raw.githubusercontent.com/openebs/mayastor-extensions/refs/heads/release/2.11/chart/templates/agent-core-deployment.yaml`
+- `https://raw.githubusercontent.com/openebs/mayastor-extensions/refs/heads/release/2.11/chart/templates/ha-node-daemonset.yaml`
+- `https://raw.githubusercontent.com/openebs/mayastor-extensions/refs/heads/release/2.11/chart/templates/api-rest-deployment.yaml`
+- `https://raw.githubusercontent.com/openebs/mayastor-extensions/refs/heads/release/2.11/chart/templates/operator-diskpool-deployment.yaml`
+- `https://raw.githubusercontent.com/openebs/mayastor-extensions/refs/heads/release/2.11/chart/templates/csi-controller-deployment.yaml`
+- `https://raw.githubusercontent.com/openebs/mayastor-extensions/refs/heads/release/2.11/chart/templates/csi-node-daemonset.yaml`
+
+Replace `release/X.Y` (and the concrete branch above) with the release matching the image version in `component.go` when bumping.
 
 Checklist per resource: container names, images, args, env vars, ports, probes, volumes, security context, hostNetwork, nodeSelector.
 

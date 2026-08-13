@@ -9,6 +9,7 @@ package controller
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 const (
@@ -115,6 +116,8 @@ func lvmControllerDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployme
 								"--leader-election-lease-duration=120s",
 								"--leader-election-renew-deadline=80s",
 								"--leader-election-retry-period=30s",
+								"--extra-create-metadata=true",
+								"--default-fstype=ext4",
 							},
 							Env: []corev1.EnvVar{{Name: "ADDRESS", Value: "/var/lib/csi/sockets/pluginproxy/csi.sock"}},
 							VolumeMounts: []corev1.VolumeMount{
@@ -187,6 +190,7 @@ func lvmNodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSet {
 	}
 
 	labels := labels("lvm-node")
+	maxUnavailable := intstr.FromString("100%")
 	return &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      lvmNodeName,
@@ -195,23 +199,36 @@ func lvmNodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSet {
 		},
 		Spec: appsv1.DaemonSetSpec{
 			Selector: &metav1.LabelSelector{MatchLabels: labels},
+			UpdateStrategy: appsv1.DaemonSetUpdateStrategy{
+				Type: appsv1.RollingUpdateDaemonSetStrategyType,
+				RollingUpdate: &appsv1.RollingUpdateDaemonSet{
+					MaxUnavailable: &maxUnavailable,
+				},
+			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{Labels: labels},
 				Spec: corev1.PodSpec{
 					ServiceAccountName: "openebs-lvm-controller",
-					HostNetwork: true,
+					HostNetwork: false,
 					Containers: []corev1.Container{
 						{
 							Name:  "csi-node-driver-registrar",
 							Image: csiNodeRegistrarImg,
 							Args: []string{
-								"--v=2",
+								"--v=5",
 								"--csi-address=$(ADDRESS)",
 								"--kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)",
 							},
+							Lifecycle: &corev1.Lifecycle{
+								PreStop: &corev1.LifecycleHandler{
+									Exec: &corev1.ExecAction{
+										Command: []string{"/bin/sh", "-c", "rm -rf /registration/lvm-localpv /registration/lvm-localpv-reg.sock"},
+									},
+								},
+							},
 							Env: []corev1.EnvVar{
 								{Name: "ADDRESS", Value: "/plugin/csi.sock"},
-								{Name: "DRIVER_REG_SOCK_PATH", Value: "/var/lib/kubelet/plugins/local.csi.openebs.io/csi.sock"},
+								{Name: "DRIVER_REG_SOCK_PATH", Value: "/var/lib/kubelet/plugins/lvm-localpv/csi.sock"},
 								{Name: "KUBE_NODE_NAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.nodeName"}}},
 							},
 							VolumeMounts: []corev1.VolumeMount{
@@ -229,11 +246,19 @@ func lvmNodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSet {
 								},
 								AllowPrivilegeEscalation: boolPtr(true),
 							},
-							Args: []string{"--plugin=agent", "--endpoint=$(CSI_ENDPOINT)", "--nodeid=$(OPENEBS_NODE_ID)"},
+							Args: []string{
+								"--nodeid=$(OPENEBS_NODE_ID)",
+								"--endpoint=$(OPENEBS_CSI_ENDPOINT)",
+								"--plugin=$(OPENEBS_NODE_DRIVER)",
+								"--kube-api-qps=0",
+								"--kube-api-burst=0",
+								"--kubelet-dir=/var/lib/kubelet/",
+							},
 							Env: []corev1.EnvVar{
 								{Name: "OPENEBS_NODE_ID", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.nodeName"}}},
 								{Name: "OPENEBS_NAMESPACE", Value: openebsNamespace},
-								{Name: "CSI_ENDPOINT", Value: "unix:///plugin/csi.sock"},
+								{Name: "OPENEBS_CSI_ENDPOINT", Value: "unix:///plugin/csi.sock"},
+								{Name: "OPENEBS_NODE_DRIVER", Value: "agent"},
 								{Name: "OPENEBS_IO_INSTALLER_TYPE", Value: "openebs-operator"},
 							},
 							VolumeMounts: []corev1.VolumeMount{
@@ -245,11 +270,11 @@ func lvmNodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSet {
 						},
 					},
 					Volumes: []corev1.Volume{
-						{Name: "plugin-dir", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/var/lib/kubelet/plugins/local.csi.openebs.io/"}}},
-						{Name: "registration-dir", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/var/lib/kubelet/plugins_registry"}}},
-						{Name: "device-dir", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/dev"}}},
-						{Name: "pods-mount-dir", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/var/lib/kubelet"}}},
-						{Name: "node-dir", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/var/lib/openebs"}}},
+						{Name: "plugin-dir", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/var/lib/kubelet/plugins/lvm-localpv/", Type: &hostpathDirOrCreate}}},
+						{Name: "registration-dir", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/var/lib/kubelet/plugins_registry/", Type: &hostpathDirOrCreate}}},
+						{Name: "device-dir", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/dev", Type: &hostpathDir}}},
+						{Name: "pods-mount-dir", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/var/lib/kubelet", Type: &hostpathDir}}},
+						{Name: "node-dir", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/var/lib/openebs", Type: &hostpathDirOrCreate}}},
 					},
 				},
 			},
@@ -258,6 +283,7 @@ func lvmNodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSet {
 }
 
 var hostpathMountPropagation = corev1.MountPropagationBidirectional
+var hostpathMountPropagationHostToContainer = corev1.MountPropagationHostToContainer
 var hostpathDir = corev1.HostPathDirectory
 var hostpathDirOrCreate = corev1.HostPathDirectoryOrCreate
 
@@ -494,7 +520,7 @@ func zfsControllerDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployme
 						{
 							Name:  "csi-provisioner",
 							Image: csiProvisionerImg,
-							Args:  []string{"--csi-address=$(ADDRESS)", "--v=2", "--timeout=150s", "--leader-election", "--leader-election-lease-duration=120s", "--leader-election-renew-deadline=80s", "--leader-election-retry-period=30s"},
+							Args:  []string{"--csi-address=$(ADDRESS)", "--v=2", "--timeout=150s", "--leader-election", "--leader-election-lease-duration=120s", "--leader-election-renew-deadline=80s", "--leader-election-retry-period=30s", "--extra-create-metadata=true", "--default-fstype=ext4"},
 							Env:   []corev1.EnvVar{{Name: "ADDRESS", Value: "/var/lib/csi/sockets/pluginproxy/csi.sock"}},
 							VolumeMounts: []corev1.VolumeMount{
 								{Name: "socket-dir", MountPath: "/var/lib/csi/sockets/pluginproxy/"},
@@ -541,6 +567,8 @@ func zfsNodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSet {
 	}
 
 	labels := labels("zfs-node")
+	maxUnavailable := intstr.FromString("100%")
+	binMode := int32(0555)
 	return &appsv1.DaemonSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      zfsNodeName,
@@ -549,6 +577,12 @@ func zfsNodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSet {
 		},
 		Spec: appsv1.DaemonSetSpec{
 			Selector: &metav1.LabelSelector{MatchLabels: labels},
+			UpdateStrategy: appsv1.DaemonSetUpdateStrategy{
+				Type: appsv1.RollingUpdateDaemonSetStrategyType,
+				RollingUpdate: &appsv1.RollingUpdateDaemonSet{
+					MaxUnavailable: &maxUnavailable,
+				},
+			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{Labels: labels},
 				Spec: corev1.PodSpec{
@@ -559,13 +593,20 @@ func zfsNodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSet {
 							Name:  "csi-node-driver-registrar",
 							Image: csiNodeRegistrarImg,
 							Args: []string{
-								"--v=2",
+								"--v=5",
 								"--csi-address=$(ADDRESS)",
 								"--kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)",
 							},
+							Lifecycle: &corev1.Lifecycle{
+								PreStop: &corev1.LifecycleHandler{
+									Exec: &corev1.ExecAction{
+										Command: []string{"/bin/sh", "-c", "rm -rf /registration/zfs-localpv /registration/zfs-localpv-reg.sock"},
+									},
+								},
+							},
 							Env: []corev1.EnvVar{
 								{Name: "ADDRESS", Value: "/plugin/csi.sock"},
-								{Name: "DRIVER_REG_SOCK_PATH", Value: "/var/lib/kubelet/plugins/zfs.csi.openebs.io/csi.sock"},
+								{Name: "DRIVER_REG_SOCK_PATH", Value: "/var/lib/kubelet/plugins/zfs-localpv/csi.sock"},
 								{Name: "KUBE_NODE_NAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.nodeName"}}},
 							},
 							VolumeMounts: []corev1.VolumeMount{
@@ -589,25 +630,47 @@ func zfsNodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSet {
 								{Name: "OPENEBS_NODE_DRIVER", Value: "agent"},
 								{Name: "OPENEBS_NAMESPACE", Value: openebsNamespace},
 								{Name: "OPENEBS_CSI_ENDPOINT", Value: "unix:///plugin/csi.sock"},
+								{Name: "ALLOWED_TOPOLOGIES", Value: "All"},
 								{Name: "OPENEBS_IO_INSTALLER_TYPE", Value: "openebs-operator"},
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{Name: "plugin-dir", MountPath: "/plugin"},
 								{Name: "device-dir", MountPath: "/dev"},
+								{Name: "encr-keys", MountPath: "/home/keys"},
+								{Name: "chroot-zfs", MountPath: "/sbin/zfs", SubPath: "zfs"},
+								{Name: "host-root", MountPath: "/host", MountPropagation: &hostpathMountPropagationHostToContainer, ReadOnly: true},
 								{Name: "pods-mount-dir", MountPath: "/var/lib/kubelet", MountPropagation: &hostpathMountPropagation},
-								{Name: "node-dir", MountPath: "/var/lib/openebs"},
 							},
 						},
 					},
 					Volumes: []corev1.Volume{
-						{Name: "plugin-dir", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/var/lib/kubelet/plugins/zfs.csi.openebs.io/"}}},
-						{Name: "registration-dir", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/var/lib/kubelet/plugins_registry"}}},
-						{Name: "device-dir", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/dev"}}},
-						{Name: "pods-mount-dir", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/var/lib/kubelet"}}},
-						{Name: "node-dir", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/var/lib/openebs"}}},
+						{Name: "plugin-dir", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/var/lib/kubelet/plugins/zfs-localpv/", Type: &hostpathDirOrCreate}}},
+						{Name: "registration-dir", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/var/lib/kubelet/plugins_registry/", Type: &hostpathDirOrCreate}}},
+						{Name: "device-dir", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/dev", Type: &hostpathDir}}},
+						{Name: "encr-keys", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/home/keys", Type: &hostpathDirOrCreate}}},
+						{Name: "chroot-zfs", VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: "openebs-zfspv-bin"}, DefaultMode: &binMode}}},
+						{Name: "host-root", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/", Type: &hostpathDir}}},
+						{Name: "pods-mount-dir", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/var/lib/kubelet", Type: &hostpathDir}}},
 					},
 				},
 			},
+		},
+	}
+}
+
+func zfsBinConfigMap() *corev1.ConfigMap {
+	return &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: "openebs-zfspv-bin", Namespace: openebsNamespace, Labels: labels("zfs-bin")},
+		Data: map[string]string{
+			"zfs": `#!/bin/sh
+if [ -x /host/sbin/zfs ]; then
+  chroot /host /sbin/zfs "$@"
+elif [ -x /host/usr/sbin/zfs ]; then
+  chroot /host /usr/sbin/zfs "$@"
+else
+  chroot /host "zfs" "$@"
+fi
+`,
 		},
 	}
 }

@@ -169,6 +169,11 @@ func (d *Deployer) deployZFS(ctx context.Context) storagev1alpha1.EngineStatus {
 		return d.engineFailed(storagev1alpha1.OpenEBSEngineZFS, err)
 	}
 
+	if err := d.apply(ctx, zfsBinConfigMap()); err != nil {
+		logger.Error(err, "failed to apply ZFS bin configmap")
+		return d.engineFailed(storagev1alpha1.OpenEBSEngineZFS, err)
+	}
+
 	if err := d.applyDaemonSet(ctx, zfsNodeDaemonSet(d.instance)); err != nil {
 		logger.Error(err, "failed to apply ZFS node daemonset")
 		return d.engineFailed(storagev1alpha1.OpenEBSEngineZFS, err)
@@ -341,6 +346,7 @@ func (d *Deployer) cleanup(ctx context.Context) error {
 		hostpathDeployment(d.instance),
 		zfsControllerDeployment(d.instance),
 		zfsNodeDaemonSet(d.instance),
+		zfsBinConfigMap(),
 		rawfileDeployment(d.instance),
 		&storagev1.CSIDriver{ObjectMeta: metav1.ObjectMeta{Name: lvmCSIDriverName}},
 		&storagev1.CSIDriver{ObjectMeta: metav1.ObjectMeta{Name: zfsCSIDriverName}},
