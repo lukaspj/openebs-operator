@@ -1103,6 +1103,8 @@ func TestMayastorHANodeDaemonSet(t *testing.T) {
 		"--grpc-ip=$(MY_POD_IP)",
 		"--grpc-port=50053",
 		"--cluster-agent=https://" + mayastorAgentCoreName + ":50052",
+		"--ansi-colors=true",
+		"--fmt-style=pretty",
 	}
 	if !slices.Equal(c.Args, wantArgs) {
 		t.Errorf("expected args %v, got %v", wantArgs, c.Args)

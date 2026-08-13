@@ -430,6 +430,8 @@ func (d *Deployer) ensureNamespace(ctx context.Context, name string) error {
 			ns.Labels = map[string]string{}
 		}
 		ns.Labels["pod-security.kubernetes.io/enforce"] = "privileged"
+		ns.Labels["pod-security.kubernetes.io/warn"] = "privileged"
+		ns.Labels["pod-security.kubernetes.io/audit"] = "privileged"
 		return nil
 	}); err != nil {
 		return err

@@ -64,6 +64,9 @@ func TestDeployerEnsureNamespaceRepairsExisting(t *testing.T) {
 	if ns.Labels["pod-security.kubernetes.io/enforce"] != "privileged" {
 		t.Errorf("expected PSA enforce=privileged label on existing namespace, got %v", ns.Labels)
 	}
+	if ns.Labels["pod-security.kubernetes.io/warn"] != "privileged" || ns.Labels["pod-security.kubernetes.io/audit"] != "privileged" {
+		t.Errorf("expected PSA warn/audit=privileged labels on existing namespace, got %v", ns.Labels)
+	}
 }
 
 func TestDeployerEnsureNamespaceIdempotent(t *testing.T) {

@@ -258,6 +258,7 @@ func lvmNodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSet {
 }
 
 var hostpathMountPropagation = corev1.MountPropagationBidirectional
+var hostpathDir = corev1.HostPathDirectory
 var hostpathDirOrCreate = corev1.HostPathDirectoryOrCreate
 
 func lvmCSIDriver() *storagev1.CSIDriver {
@@ -948,7 +949,9 @@ func mayastorAgentCoreDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Depl
 							Args: []string{
 								"-g=[::]:50052",
 								"--store=http://mayastor-etcd:2379",
-								"--core-grpc=http://mayastor-agent-core:50051",
+								"--core-grpc=https://" + mayastorAgentCoreName + ":50051",
+								"--ansi-colors=true",
+								"--fmt-style=pretty",
 							},
 							Ports: []corev1.ContainerPort{
 								{Name: "grpc", ContainerPort: 50052},
@@ -1014,8 +1017,11 @@ func mayastorAPIRestDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deploy
 							"--no-auth",
 							"--request-timeout=5s",
 							"--core-grpc=https://" + mayastorAgentCoreName + ":50051",
+							"--ansi-colors=true",
+							"--fmt-style=pretty",
 						},
 						Ports: []corev1.ContainerPort{
+							{Name: "http", ContainerPort: 8080},
 							{Name: "rest", ContainerPort: 8081},
 						},
 					}},
@@ -1036,6 +1042,7 @@ func mayastorAPIRestService() *corev1.Service {
 		Spec: corev1.ServiceSpec{
 			Selector: lbls,
 			Ports: []corev1.ServicePort{
+				{Name: "http", Port: 8080},
 				{Name: "rest", Port: 8081},
 			},
 		},
@@ -1088,6 +1095,7 @@ func mayastorCSIControllerDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.
 								"--extra-create-metadata",
 								"--timeout=36s",
 								"--worker-threads=10",
+								"--prevent-volume-mode-conversion",
 							},
 							Env: []corev1.EnvVar{{Name: "ADDRESS", Value: socketPath}},
 							VolumeMounts: []corev1.VolumeMount{
@@ -1125,6 +1133,7 @@ func mayastorCSIControllerDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.
 							Args: []string{
 								"--v=2",
 								"--leader-election=false",
+								"--prevent-volume-mode-conversion",
 							},
 						},
 						{
@@ -1147,6 +1156,10 @@ func mayastorCSIControllerDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.
 								"--csi-socket=" + socketPath,
 								"--rest-endpoint=http://mayastor-api-rest:8081",
 								"--node-selector=openebs.io/csi-node=mayastor",
+								"--create-volume-limit=10",
+								"--enable-orphan-vol-gc=false",
+								"--ansi-colors=true",
+								"--fmt-style=pretty",
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{Name: "socket-dir", MountPath: socketDir},
@@ -1190,26 +1203,54 @@ func mayastorIOEngineDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.Daemon
 							Privileged: boolPtr(true),
 						},
 						Args: []string{
-							"--endpoint=0.0.0.0:10124",
-							"--node=$(NODE_NAME)",
-							"--namespace=$(POD_NAMESPACE)",
+							"--grpc-ip=$(MY_POD_IP)",
+							"--grpc-port=10124",
+							"-N$(MY_NODE_NAME)",
+							"-Rhttps://" + mayastorAgentCoreName + ":50051",
+							"-y/var/local/mayastor/io-engine/config.yaml",
+							"-l1,2",
+							"-p=mayastor-etcd:2379",
+							"--ptpl-dir=/var/local/mayastor/io-engine/ptpl/",
+							"--api-versions=v1",
+							"--tgt-crdt=30",
+							"--ps-retries=300",
+							"--pool-io-error-threshold=64",
+							"--pool-io-stall-deadline=110s110s",
+							"--pool-io-stall-transition-threshold=3",
+							"--pool-io-stall-transition-window=3h",
 						},
 						Env: []corev1.EnvVar{
-							{Name: "NODE_NAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.nodeName"}}},
-							{Name: "POD_NAMESPACE", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}}},
+							{Name: "RUST_LOG", Value: "info"},
+							{Name: "NVMF_TCP_NUM_SHARED_BUF", Value: "2047"},
+							{Name: "NVMF_TCP_BUF_CACHE_SIZE", Value: "64"},
+							{Name: "NVMF_TCP_MAX_QPAIRS_PER_CTRL", Value: "32"},
+							{Name: "NVMF_TCP_MAX_QUEUE_DEPTH", Value: "32"},
+							{Name: "NVME_TIMEOUT", Value: "110s"},
+							{Name: "NVME_TIMEOUT_ADMIN", Value: "30s"},
+							{Name: "NVME_KATO", Value: "10s"},
+							{Name: "NVME_MAX_NAMESPACES", Value: "4096"},
+							{Name: "MY_NODE_NAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.nodeName"}}},
+							{Name: "MY_POD_IP", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "status.podIP"}}},
+							{Name: "NEXUS_NVMF_ANA_ENABLE", Value: "1"},
+							{Name: "NEXUS_NVMF_RESV_ENABLE", Value: "1"},
+						},
+						Ports: []corev1.ContainerPort{
+							{Name: "io-engine", ContainerPort: 10124, Protocol: corev1.ProtocolTCP},
 						},
 						VolumeMounts: []corev1.VolumeMount{
-							{Name: "hugepage-2mi", MountPath: "/dev/hugepages"},
-							{Name: "hugepage-1gi", MountPath: "/dev/hugepages1G"},
-							{Name: "host-tmp", MountPath: "/host/var/tmp"},
-							{Name: "device-dir", MountPath: "/dev"},
+							{Name: "device", MountPath: "/dev"},
+							{Name: "udev", MountPath: "/run/udev"},
+							{Name: "dshm", MountPath: "/dev/shm"},
+							{Name: "configlocation", MountPath: "/var/local/mayastor/io-engine/"},
+							{Name: "hugepages-2mi", MountPath: "/dev/hugepages-2mi"},
 						},
 					}},
 					Volumes: []corev1.Volume{
-						{Name: "hugepage-2mi", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/dev/hugepages"}}},
-						{Name: "hugepage-1gi", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/dev/hugepages1G"}}},
-						{Name: "host-tmp", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/var/tmp"}}},
-						{Name: "device-dir", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/dev"}}},
+						{Name: "device", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/dev", Type: &hostpathDir}}},
+						{Name: "udev", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/run/udev", Type: &hostpathDir}}},
+						{Name: "dshm", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{Medium: corev1.StorageMediumMemory, SizeLimit: resource.NewQuantity(1<<30, resource.BinarySI)}}},
+						{Name: "hugepages-2mi", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{Medium: corev1.StorageMediumHugePages}}},
+						{Name: "configlocation", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/var/local/mayastor/io-engine/", Type: &hostpathDirOrCreate}}},
 					},
 				},
 			},
@@ -1280,6 +1321,14 @@ func mayastorCSINodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonS
 								"--enable-rest",
 								"--enable-registration",
 								"--grpc-ip=$(MY_POD_IP)",
+								"--grpc-port=10199",
+								"--nvme-io-timeout=110s10s",
+								"--nvme-core-io-timeout=110s10s",
+								"--nvme-nr-io-queues=2",
+								"--nvme-connect-fallback=true",
+								"--kubelet-path=/var/lib/kubelet",
+								"--fmt-style=pretty",
+								"--ansi-colors=true",
 							},
 							Env: []corev1.EnvVar{
 								{Name: "RUST_LOG", Value: "info"},
@@ -1335,9 +1384,17 @@ func mayastorOperatorDiskpoolDeployment(instance *storagev1alpha1.OpenEBS) *apps
 					Containers: []corev1.Container{{
 						Name:  "operator-diskpool",
 						Image: img,
-						Args:  []string{"--namespace=$(POD_NAMESPACE)"},
+						Args: []string{
+							"-e http://" + mayastorAPIRestName + ":8081",
+							"-n" + mayastorNamespace,
+							"--request-timeout=5s",
+							"--interval=30s",
+							"--ansi-colors=true",
+							"--fmt-style=pretty",
+						},
 						Env: []corev1.EnvVar{
-							{Name: "POD_NAMESPACE", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}}},
+							{Name: "RUST_LOG", Value: "info"},
+							{Name: "MY_POD_NAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"}}},
 						},
 					}},
 				},
@@ -1379,6 +1436,8 @@ func mayastorHANodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSe
 							"--grpc-ip=$(MY_POD_IP)",
 							"--grpc-port=50053",
 							"--cluster-agent=https://" + mayastorAgentCoreName + ":50052",
+							"--ansi-colors=true",
+							"--fmt-style=pretty",
 						},
 						Env: []corev1.EnvVar{
 							{Name: "RUST_LOG", Value: "info"},

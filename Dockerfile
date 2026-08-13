@@ -11,7 +11,8 @@ COPY cmd/ cmd/
 COPY api/ api/
 COPY internal/ internal/
 
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -o manager cmd/main.go
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -trimpath -o manager cmd/main.go
 
 FROM gcr.io/distroless/static:nonroot
 WORKDIR /
