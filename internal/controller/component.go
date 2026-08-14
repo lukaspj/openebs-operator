@@ -880,6 +880,16 @@ func mayastorEtcdStatefulSet(instance *storagev1alpha1.OpenEBS) *appsv1.Stateful
 	pvcLabels := map[string]string{"app": "etcd"}
 	etcdUID := int64(1001)
 	zero := int64(0)
+	podAnnotations := map[string]string{}
+	if instance.Spec.Mayastor != nil && instance.Spec.Mayastor.EtcdVeleroBackup {
+		podAnnotations = map[string]string{
+			"backup.velero.io/backup-volumes":    "data",
+			"pre.hook.backup.velero.io/container": "etcd",
+			"pre.hook.backup.velero.io/command":   `["/bin/sh","-c","etcdctl snapshot save /bitnami/etcd/velero-etcd-snapshot.db && sync"]`,
+			"pre.hook.backup.velero.io/timeout":   "5m",
+			"pre.hook.backup.velero.io/on-error":  "Fail",
+		}
+	}
 	pvcSpec := corev1.PersistentVolumeClaimSpec{
 		AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 		Resources: corev1.VolumeResourceRequirements{
@@ -902,7 +912,7 @@ func mayastorEtcdStatefulSet(instance *storagev1alpha1.OpenEBS) *appsv1.Stateful
 			Replicas:    &replicas,
 			Selector:    &metav1.LabelSelector{MatchLabels: lbls},
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{Labels: lbls},
+				ObjectMeta: metav1.ObjectMeta{Labels: lbls, Annotations: podAnnotations},
 				Spec: corev1.PodSpec{
 					SecurityContext: &corev1.PodSecurityContext{
 						FSGroup: &etcdUID,
@@ -972,6 +982,45 @@ func mayastorEtcdService() *corev1.Service {
 			Selector: lbls,
 			Ports: []corev1.ServicePort{
 				{Name: "client", Port: 2379},
+			},
+		},
+	}
+}
+
+func mayastorEtcdVeleroSchedule(instance *storagev1alpha1.OpenEBS) *unstructured.Unstructured {
+	ns := "velero"
+	cron := ""
+	if instance.Spec.Mayastor != nil {
+		if instance.Spec.Mayastor.EtcdVeleroNamespace != "" {
+			ns = instance.Spec.Mayastor.EtcdVeleroNamespace
+		}
+		cron = instance.Spec.Mayastor.EtcdVeleroSchedule
+	}
+	return &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "velero.io/v1",
+			"kind":       "Schedule",
+			"metadata": map[string]interface{}{
+				"name":      mayastorEtcdName,
+				"namespace": ns,
+				"labels": map[string]interface{}{
+					"app.kubernetes.io/name":       "openebs",
+					"app.kubernetes.io/component":  "mayastor-etcd-velero",
+					"app.kubernetes.io/managed-by": "openebs-operator",
+				},
+			},
+			"spec": map[string]interface{}{
+				"schedule": cron,
+				"template": map[string]interface{}{
+					"includedNamespaces": []interface{}{mayastorNamespace},
+					"includedResources":  []interface{}{"statefulsets"},
+					"labelSelector": map[string]interface{}{
+						"matchLabels": map[string]interface{}{
+							"app.kubernetes.io/component": "mayastor-etcd",
+						},
+					},
+					"snapshotVolumes": false,
+				},
 			},
 		},
 	}

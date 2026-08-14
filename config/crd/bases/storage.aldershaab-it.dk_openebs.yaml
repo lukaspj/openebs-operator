@@ -121,6 +121,13 @@ spec:
                     etcdStorageClassName:
                       type: string
                       default: ""
+                    etcdVeleroBackup:
+                      type: boolean
+                    etcdVeleroSchedule:
+                      type: string
+                    etcdVeleroNamespace:
+                      type: string
+                      default: "velero"
                   required:
                     - enabled
                 imagePullSecrets:

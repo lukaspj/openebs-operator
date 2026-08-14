@@ -173,6 +173,49 @@ func TestMayastorStorageClassDefaultClass(t *testing.T) {
 	}
 }
 
+func TestEtcdVeleroBackupAndSchedule(t *testing.T) {
+	ctx := context.Background()
+	updateCR(ctx, t, crName, func(cr *storagev1alpha1.OpenEBS) {
+		cr.Spec.Mayastor = &storagev1alpha1.MayastorConfig{
+			Enabled:            true,
+			EtcdVeleroBackup:   true,
+			EtcdVeleroSchedule: "0 * * * *",
+		}
+	})
+	waitForCRReady(ctx, t, crName)
+
+	sts := &appsv1.StatefulSet{}
+	err := wait.PollUntilContextTimeout(ctx, defaultInterval, defaultTimeout, true, func(ctx context.Context) (bool, error) {
+		if err := k8sClient.Get(ctx, client.ObjectKey{Name: "mayastor-etcd", Namespace: mayastorNamespace}, sts); err != nil {
+			return false, nil
+		}
+		return sts.Spec.Template.Annotations["backup.velero.io/backup-volumes"] == "data", nil
+	})
+	if err != nil {
+		t.Fatalf("etcd pod template did not get velero backup annotation: %v", err)
+	}
+	if sts.Spec.Template.Annotations["pre.hook.backup.velero.io/command"] == "" {
+		t.Error("etcd pod template missing pre-backup hook")
+	}
+
+	updateCR(ctx, t, crName, func(cr *storagev1alpha1.OpenEBS) {
+		cr.Spec.Mayastor.EtcdVeleroBackup = false
+		cr.Spec.Mayastor.EtcdVeleroSchedule = ""
+	})
+	waitForCRReady(ctx, t, crName)
+
+	err = wait.PollUntilContextTimeout(ctx, defaultInterval, defaultTimeout, true, func(ctx context.Context) (bool, error) {
+		if err := k8sClient.Get(ctx, client.ObjectKey{Name: "mayastor-etcd", Namespace: mayastorNamespace}, sts); err != nil {
+			return false, nil
+		}
+		_, ok := sts.Spec.Template.Annotations["backup.velero.io/backup-volumes"]
+		return !ok, nil
+	})
+	if err != nil {
+		t.Fatalf("etcd velero annotations not removed after disable: %v", err)
+	}
+}
+
 func TestCRDeleteCleanup(t *testing.T) {
 	ctx := context.Background()
 	deleteCR(ctx, t, crName)

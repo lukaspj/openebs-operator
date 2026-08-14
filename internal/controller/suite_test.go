@@ -14,7 +14,9 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -1164,5 +1166,106 @@ func TestE2E_MayastorUpgradeEtcdReplicas(t *testing.T) {
 	}
 	if *updated.Spec.Replicas != 2 {
 		t.Errorf("expected 2 replicas after upgrade, got %d", *updated.Spec.Replicas)
+	}
+}
+
+// ============================================================
+//  E2E: Etcd Velero backup annotations + Schedule
+// ============================================================
+
+func TestE2E_VeleroScheduleCreated(t *testing.T) {
+	ctx := context.Background()
+	s := e2eScheme()
+	s.AddKnownTypes(schema.GroupVersion{Group: "velero.io", Version: "v1"},
+		&unstructured.Unstructured{}, &unstructured.UnstructuredList{})
+	cl := fake.NewClientBuilder().WithScheme(s).WithStatusSubresource(&storagev1alpha1.OpenEBS{}).Build()
+	r := &OpenEBSReconciler{Client: cl, Scheme: s}
+
+	cr := &storagev1alpha1.OpenEBS{
+		ObjectMeta: metav1.ObjectMeta{Name: "e2e-velero-schedule"},
+		Spec: storagev1alpha1.OpenEBSSpec{
+			Mayastor: &storagev1alpha1.MayastorConfig{
+				Enabled:            true,
+				EtcdVeleroBackup:   true,
+				EtcdVeleroSchedule: "0 * * * *",
+			},
+		},
+	}
+	if err := cl.Create(ctx, cr); err != nil {
+		t.Fatalf("create CR: %v", err)
+	}
+	req := ctrl.Request{NamespacedName: types.NamespacedName{Name: cr.Name}}
+	_, _ = r.Reconcile(ctx, req)
+
+	sts := &appsv1.StatefulSet{}
+	if err := cl.Get(ctx, types.NamespacedName{Name: mayastorEtcdName, Namespace: mayastorNamespace}, sts); err != nil {
+		t.Fatalf("etcd not created: %v", err)
+	}
+	if sts.Spec.Template.Annotations["backup.velero.io/backup-volumes"] != "data" {
+		t.Error("etcd pod template missing backup-volumes annotation")
+	}
+	if sts.Spec.Template.Annotations["pre.hook.backup.velero.io/command"] == "" {
+		t.Error("etcd pod template missing pre-backup hook")
+	}
+
+	sched := &unstructured.Unstructured{}
+	sched.SetGroupVersionKind(schema.GroupVersionKind{Group: "velero.io", Version: "v1", Kind: "Schedule"})
+	if err := cl.Get(ctx, types.NamespacedName{Name: mayastorEtcdName, Namespace: "velero"}, sched); err != nil {
+		t.Fatalf("Velero Schedule should be created: %v", err)
+	}
+	spec := sched.Object["spec"].(map[string]interface{})
+	if spec["schedule"] != "0 * * * *" {
+		t.Errorf("expected cron 0 * * * *, got %v", spec["schedule"])
+	}
+
+	// Clear the schedule — Schedule should be deleted
+	obj := &storagev1alpha1.OpenEBS{}
+	if err := cl.Get(ctx, types.NamespacedName{Name: cr.Name}, obj); err != nil {
+		t.Fatalf("get CR: %v", err)
+	}
+	obj.Spec.Mayastor.EtcdVeleroSchedule = ""
+	if err := cl.Update(ctx, obj); err != nil {
+		t.Fatalf("update CR: %v", err)
+	}
+	_, _ = r.Reconcile(ctx, req)
+
+	gone := &unstructured.Unstructured{}
+	gone.SetGroupVersionKind(schema.GroupVersionKind{Group: "velero.io", Version: "v1", Kind: "Schedule"})
+	if err := cl.Get(ctx, types.NamespacedName{Name: mayastorEtcdName, Namespace: "velero"}, gone); !errors.IsNotFound(err) {
+		t.Errorf("Velero Schedule should be deleted after clearing field, got err=%v", err)
+	}
+}
+
+func TestE2E_VeleroScheduleSkippedWithoutCRD(t *testing.T) {
+	ctx := context.Background()
+	s := e2eScheme()
+	cl := fake.NewClientBuilder().WithScheme(s).WithStatusSubresource(&storagev1alpha1.OpenEBS{}).Build()
+	r := &OpenEBSReconciler{Client: cl, Scheme: s}
+
+	cr := &storagev1alpha1.OpenEBS{
+		ObjectMeta: metav1.ObjectMeta{Name: "e2e-velero-no-crd"},
+		Spec: storagev1alpha1.OpenEBSSpec{
+			Mayastor: &storagev1alpha1.MayastorConfig{
+				Enabled:            true,
+				EtcdVeleroSchedule: "0 * * * *",
+			},
+		},
+	}
+	if err := cl.Create(ctx, cr); err != nil {
+		t.Fatalf("create CR: %v", err)
+	}
+	req := ctrl.Request{NamespacedName: types.NamespacedName{Name: cr.Name}}
+	_, _ = r.Reconcile(ctx, req)
+
+	obj := &storagev1alpha1.OpenEBS{}
+	if err := cl.Get(ctx, types.NamespacedName{Name: cr.Name}, obj); err != nil {
+		t.Fatalf("get CR: %v", err)
+	}
+	for _, e := range obj.Status.Engines {
+		if e.Name == storagev1alpha1.OpenEBSEngineMayastor {
+			if e.Phase == storagev1alpha1.OpenEBSPhaseFailed {
+				t.Errorf("mayastor should not fail when Velero CRDs are absent: %s", e.Message)
+			}
+		}
 	}
 }

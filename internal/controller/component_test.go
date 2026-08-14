@@ -1289,6 +1289,75 @@ func TestMayastorEtcdImageOverride(t *testing.T) {
 	}
 }
 
+func TestMayastorEtcdVeleroBackupAnnotations(t *testing.T) {
+	t.Run("disabled by default", func(t *testing.T) {
+		instance := &storagev1alpha1.OpenEBS{
+			Spec: storagev1alpha1.OpenEBSSpec{
+				Mayastor: &storagev1alpha1.MayastorConfig{Enabled: true},
+			},
+		}
+		sts := mayastorEtcdStatefulSet(instance)
+		ann := sts.Spec.Template.Annotations
+		if _, ok := ann["backup.velero.io/backup-volumes"]; ok {
+			t.Error("expected no velero annotation when backup disabled")
+		}
+		if _, ok := ann["pre.hook.backup.velero.io/command"]; ok {
+			t.Error("expected no pre-backup hook when backup disabled")
+		}
+	})
+
+	t.Run("enabled", func(t *testing.T) {
+		instance := &storagev1alpha1.OpenEBS{
+			Spec: storagev1alpha1.OpenEBSSpec{
+				Mayastor: &storagev1alpha1.MayastorConfig{Enabled: true, EtcdVeleroBackup: true},
+			},
+		}
+		sts := mayastorEtcdStatefulSet(instance)
+		ann := sts.Spec.Template.Annotations
+		if ann["backup.velero.io/backup-volumes"] != "data" {
+			t.Errorf("expected backup-volumes=data, got %q", ann["backup.velero.io/backup-volumes"])
+		}
+		if ann["pre.hook.backup.velero.io/container"] != "etcd" {
+			t.Errorf("expected hook container etcd, got %q", ann["pre.hook.backup.velero.io/container"])
+		}
+		if ann["pre.hook.backup.velero.io/command"] == "" {
+			t.Error("expected pre-backup hook command")
+		}
+	})
+}
+
+func TestMayastorEtcdVeleroSchedule(t *testing.T) {
+	instance := &storagev1alpha1.OpenEBS{
+		Spec: storagev1alpha1.OpenEBSSpec{
+			Mayastor: &storagev1alpha1.MayastorConfig{
+				Enabled:            true,
+				EtcdVeleroSchedule: "0 * * * *",
+			},
+		},
+	}
+	s := mayastorEtcdVeleroSchedule(instance)
+	if s.GetAPIVersion() != "velero.io/v1" || s.GetKind() != "Schedule" {
+		t.Errorf("expected velero.io/v1 Schedule, got %s %s", s.GetAPIVersion(), s.GetKind())
+	}
+	if s.GetNamespace() != "velero" {
+		t.Errorf("expected default namespace velero, got %s", s.GetNamespace())
+	}
+	spec := s.Object["spec"].(map[string]interface{})
+	if spec["schedule"] != "0 * * * *" {
+		t.Errorf("expected cron 0 * * * *, got %v", spec["schedule"])
+	}
+	tmpl := spec["template"].(map[string]interface{})
+	if tmpl["snapshotVolumes"] != false {
+		t.Errorf("expected snapshotVolumes=false, got %v", tmpl["snapshotVolumes"])
+	}
+
+	instance.Spec.Mayastor.EtcdVeleroNamespace = "my-velero"
+	s = mayastorEtcdVeleroSchedule(instance)
+	if s.GetNamespace() != "my-velero" {
+		t.Errorf("expected namespace my-velero, got %s", s.GetNamespace())
+	}
+}
+
 func TestOpenEBSSpecDeepCopy(t *testing.T) {
 	spec := &storagev1alpha1.OpenEBSSpec{
 		LVM: &storagev1alpha1.LVMConfig{

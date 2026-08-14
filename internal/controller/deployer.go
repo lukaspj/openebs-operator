@@ -13,6 +13,7 @@ import (
 	storagev1 "k8s.io/api/storage/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -274,6 +275,11 @@ func (d *Deployer) deployMayastor(ctx context.Context) storagev1alpha1.EngineSta
 		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
 	}
 
+	if err := d.reconcileEtcdVeleroSchedule(ctx); err != nil {
+		logger.Error(err, "failed to reconcile etcd Velero Schedule")
+		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
+	}
+
 	if err := d.applyDeployment(ctx, mayastorAgentCoreDeployment(d.instance)); err != nil {
 		logger.Error(err, "failed to apply agent-core")
 		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
@@ -425,8 +431,9 @@ func (d *Deployer) cleanup(ctx context.Context) error {
 			"kind":       "VolumeSnapshotClass",
 			"metadata":   map[string]interface{}{"name": mayastorSnapshotClassName},
 		}},
+		mayastorEtcdVeleroSchedule(d.instance),
 	} {
-		if err := d.Delete(ctx, obj); err != nil && !errors.IsNotFound(err) {
+		if err := d.Delete(ctx, obj); err != nil && !errors.IsNotFound(err) && !meta.IsNoMatchError(err) {
 			return err
 		}
 	}
@@ -435,6 +442,33 @@ func (d *Deployer) cleanup(ctx context.Context) error {
 }
 
 // --- Helpers ---
+
+// reconcileEtcdVeleroSchedule creates or removes the Velero Schedule for
+// the Mayastor etcd StatefulSet based on the CR spec. If Velero CRDs are
+// not installed, creation is skipped with a log message instead of
+// failing the engine.
+func (d *Deployer) reconcileEtcdVeleroSchedule(ctx context.Context) error {
+	logger := log.FromContext(ctx)
+	schedule := mayastorEtcdVeleroSchedule(d.instance)
+
+	configured := d.instance.Spec.Mayastor != nil && d.instance.Spec.Mayastor.EtcdVeleroSchedule != ""
+	if !configured {
+		err := d.Delete(ctx, schedule)
+		if err != nil && !errors.IsNotFound(err) && !meta.IsNoMatchError(err) {
+			return err
+		}
+		return nil
+	}
+
+	if err := d.applyUnstructured(ctx, schedule); err != nil {
+		if meta.IsNoMatchError(err) {
+			logger.Info("velero.io/v1 Schedule CRD not installed, skipping Schedule creation", "name", schedule.GetName())
+			return nil
+		}
+		return err
+	}
+	return nil
+}
 
 func (d *Deployer) etcdHealthCheck(ctx context.Context) error {
 	sts := &appsv1.StatefulSet{}
@@ -722,6 +756,15 @@ func (d *Deployer) cleanupOrphans(ctx context.Context) error {
 			if err := d.Delete(ctx, &sc); err != nil {
 				return err
 			}
+		}
+	}
+
+	scheduleWanted := d.instance.Spec.Mayastor != nil && d.instance.Spec.Mayastor.Enabled &&
+		d.instance.Spec.Mayastor.EtcdVeleroSchedule != ""
+	if !scheduleWanted {
+		schedule := mayastorEtcdVeleroSchedule(d.instance)
+		if err := d.Delete(ctx, schedule); err != nil && !errors.IsNotFound(err) && !meta.IsNoMatchError(err) {
+			return err
 		}
 	}
 

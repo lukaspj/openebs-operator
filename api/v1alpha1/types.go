@@ -192,6 +192,23 @@ type MayastorConfig struct {
 	// EtcdStorageClassName sets the StorageClass for etcd PVCs.
 	// +optional
 	EtcdStorageClassName string `json:"etcdStorageClassName,omitempty"`
+
+	// EtcdVeleroBackup enables Velero pod-volume backup of the etcd PVC.
+	// Adds the backup-volumes annotation and a pre-backup hook that
+	// writes a consistent etcd snapshot before backup runs.
+	// +optional
+	EtcdVeleroBackup bool `json:"etcdVeleroBackup,omitempty"`
+
+	// EtcdVeleroSchedule is a cron expression for a Velero Schedule CR
+	// the operator creates for the etcd StatefulSet. Empty means no
+	// Schedule is created. Assumes Velero CRDs are installed.
+	// +optional
+	EtcdVeleroSchedule string `json:"etcdVeleroSchedule,omitempty"`
+
+	// EtcdVeleroNamespace is the namespace for the Velero Schedule CR.
+	// +kubebuilder:default="velero"
+	// +optional
+	EtcdVeleroNamespace string `json:"etcdVeleroNamespace,omitempty"`
 }
 
 // ImageConfig overrides container images for OpenEBS components.
