@@ -65,6 +65,8 @@ spec:
                     poolName:
                       type: string
                       default: "zfspool"
+                    isDefaultClass:
+                      type: boolean
                   required:
                     - enabled
                 rawfile:
@@ -75,6 +77,8 @@ spec:
                     basePath:
                       type: string
                       default: "/var/openebs/rawfile"
+                    isDefaultClass:
+                      type: boolean
                   required:
                     - enabled
                 mayastor:
@@ -106,6 +110,8 @@ spec:
                     storageClassName:
                       type: string
                       default: "mayastor"
+                    isDefaultClass:
+                      type: boolean
                     snapshotClassName:
                       type: string
                       default: "mayastor-snapshot"

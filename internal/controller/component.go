@@ -699,6 +699,9 @@ func zfsStorageClass(name string, cfg *storagev1alpha1.ZFSConfig) *storagev1.Sto
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   name,
 			Labels: labels("zfs-sc"),
+			Annotations: map[string]string{
+				"storageclass.kubernetes.io/is-default-class": boolToStr(cfg.IsDefaultClass),
+			},
 		},
 		Provisioner:        zfsCSIDriverName,
 		ReclaimPolicy:      &deletePolicy,
@@ -799,6 +802,9 @@ func rawfileStorageClass(name string, cfg *storagev1alpha1.RawfileConfig) *stora
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   name,
 			Labels: labels("rawfile-sc"),
+			Annotations: map[string]string{
+				"storageclass.kubernetes.io/is-default-class": boolToStr(cfg.IsDefaultClass),
+			},
 		},
 		Provisioner:        "rawfile.csi.openebs.io",
 		ReclaimPolicy:      &deletePolicy,
@@ -1548,10 +1554,17 @@ func mayastorStorageClass(name string, instance *storagev1alpha1.OpenEBS) *stora
 	protocol := "nvmf"
 	deletePolicy := corev1.PersistentVolumeReclaimDelete
 	allowExpansion := true
+	isDefault := false
+	if instance.Spec.Mayastor != nil {
+		isDefault = instance.Spec.Mayastor.IsDefaultClass
+	}
 	return &storagev1.StorageClass{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:   name,
 			Labels: labels("mayastor-sc"),
+			Annotations: map[string]string{
+				"storageclass.kubernetes.io/is-default-class": boolToStr(isDefault),
+			},
 		},
 		Provisioner:          mayastorCSIDriverName,
 		ReclaimPolicy:        &deletePolicy,

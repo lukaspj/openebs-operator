@@ -705,6 +705,15 @@ func TestZFSStorageClass(t *testing.T) {
 			t.Errorf("expected poolname tank, got %s", sc.Parameters["poolname"])
 		}
 	})
+
+	t.Run("default class annotation", func(t *testing.T) {
+		cfg := &storagev1alpha1.ZFSConfig{Enabled: true, IsDefaultClass: true}
+		sc := zfsStorageClass("openebs-zfs", cfg)
+
+		if sc.Annotations["storageclass.kubernetes.io/is-default-class"] != "true" {
+			t.Error("expected default class annotation to be true")
+		}
+	})
 }
 
 func TestRawfileStorageClass(t *testing.T) {
@@ -729,6 +738,15 @@ func TestRawfileStorageClass(t *testing.T) {
 
 		if sc.Parameters["basePath"] != "/mnt/rawfile" {
 			t.Errorf("expected basePath /mnt/rawfile, got %s", sc.Parameters["basePath"])
+		}
+	})
+
+	t.Run("default class annotation", func(t *testing.T) {
+		cfg := &storagev1alpha1.RawfileConfig{Enabled: true, IsDefaultClass: true}
+		sc := rawfileStorageClass("openebs-rawfile", cfg)
+
+		if sc.Annotations["storageclass.kubernetes.io/is-default-class"] != "true" {
+			t.Error("expected default class annotation to be true")
 		}
 	})
 }
@@ -1219,6 +1237,24 @@ func TestMayastorStorageClassCustomName(t *testing.T) {
 	sc := mayastorStorageClass("my-mayastor", instance)
 	if sc.Name != "my-mayastor" {
 		t.Errorf("expected name my-mayastor, got %s", sc.Name)
+	}
+}
+
+func TestMayastorStorageClassDefaultClass(t *testing.T) {
+	instance := &storagev1alpha1.OpenEBS{
+		Spec: storagev1alpha1.OpenEBSSpec{
+			Mayastor: &storagev1alpha1.MayastorConfig{Enabled: true, IsDefaultClass: true},
+		},
+	}
+	sc := mayastorStorageClass(mayastorSCName, instance)
+	if sc.Annotations["storageclass.kubernetes.io/is-default-class"] != "true" {
+		t.Error("expected default class annotation to be true")
+	}
+
+	instance.Spec.Mayastor.IsDefaultClass = false
+	sc = mayastorStorageClass(mayastorSCName, instance)
+	if sc.Annotations["storageclass.kubernetes.io/is-default-class"] != "false" {
+		t.Error("expected default class annotation to be false")
 	}
 }
 

@@ -131,6 +131,10 @@ type ZFSConfig struct {
 	// +kubebuilder:default="zfspool"
 	// +optional
 	PoolName string `json:"poolName,omitempty"`
+
+	// IsDefaultClass makes the ZFS StorageClass the default.
+	// +optional
+	IsDefaultClass bool `json:"isDefaultClass,omitempty"`
 }
 
 // RawfileConfig configures the rawfile local PV provisioner.
@@ -142,6 +146,10 @@ type RawfileConfig struct {
 	// +kubebuilder:default="/var/openebs/rawfile"
 	// +optional
 	BasePath string `json:"basePath,omitempty"`
+
+	// IsDefaultClass makes the rawfile StorageClass the default.
+	// +optional
+	IsDefaultClass bool `json:"isDefaultClass,omitempty"`
 }
 
 // MayastorConfig configures the Mayastor replicated storage engine.
@@ -166,6 +174,10 @@ type MayastorConfig struct {
 	// +kubebuilder:default="mayastor"
 	// +optional
 	StorageClassName string `json:"storageClassName,omitempty"`
+
+	// IsDefaultClass makes the Mayastor StorageClass the default.
+	// +optional
+	IsDefaultClass bool `json:"isDefaultClass,omitempty"`
 
 	// SnapshotClassName overrides the name of the VolumeSnapshotClass.
 	// +kubebuilder:default="mayastor-snapshot"

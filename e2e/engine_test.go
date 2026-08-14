@@ -9,7 +9,9 @@ import (
 	storagev1alpha1 "github.com/aldershaab-it/openebs-operator/api/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -131,6 +133,43 @@ func TestMayastorStorageClassCustomName(t *testing.T) {
 	vsc := unstructuredObj(gvk("snapshot.storage.k8s.io", "v1", "VolumeSnapshotClass"), "mayastor-snapshot", "")
 	if resourceExists(ctx, t, vsc) {
 		t.Log("VolumeSnapshotClass deployed with default name")
+	}
+}
+
+func TestMayastorStorageClassDefaultClass(t *testing.T) {
+	ctx := context.Background()
+	updateCR(ctx, t, crName, func(cr *storagev1alpha1.OpenEBS) {
+		cr.Spec.Mayastor = &storagev1alpha1.MayastorConfig{
+			Enabled:        true,
+			IsDefaultClass: true,
+		}
+	})
+	waitForCRReady(ctx, t, crName)
+
+	sc := &storagev1.StorageClass{}
+	err := wait.PollUntilContextTimeout(ctx, defaultInterval, defaultTimeout, true, func(ctx context.Context) (bool, error) {
+		if err := k8sClient.Get(ctx, client.ObjectKey{Name: "mayastor"}, sc); err != nil {
+			return false, nil
+		}
+		return sc.Annotations["storageclass.kubernetes.io/is-default-class"] == "true", nil
+	})
+	if err != nil {
+		t.Fatalf("mayastor StorageClass did not become default: %v", err)
+	}
+
+	updateCR(ctx, t, crName, func(cr *storagev1alpha1.OpenEBS) {
+		cr.Spec.Mayastor.IsDefaultClass = false
+	})
+	waitForCRReady(ctx, t, crName)
+
+	err = wait.PollUntilContextTimeout(ctx, defaultInterval, defaultTimeout, true, func(ctx context.Context) (bool, error) {
+		if err := k8sClient.Get(ctx, client.ObjectKey{Name: "mayastor"}, sc); err != nil {
+			return false, nil
+		}
+		return sc.Annotations["storageclass.kubernetes.io/is-default-class"] == "false", nil
+	})
+	if err != nil {
+		t.Fatalf("mayastor StorageClass did not lose default annotation: %v", err)
 	}
 }
 
