@@ -1,6 +1,6 @@
 package controller
 
-	import (
+import (
 	storagev1alpha1 "github.com/aldershaab-it/openebs-operator/api/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -13,19 +13,19 @@ package controller
 )
 
 const (
-	defaultLVMImage         = "openebs/lvm-driver:1.9.1"
-	defaultHostpathImage    = "openebs/provisioner-localpv:4.5.0"
-	defaultZFSImage         = "openebs/zfs-driver:2.10.1"
-	defaultRawfileImage     = "openebs/rawfile-localpv:0.14.1"
-	defaultHelperImage      = "openebs/linux-utils:4.5.0"
-	defaultCSIProvisioner   = "registry.k8s.io/sig-storage/csi-provisioner:v4.0.1"
-	defaultCSIResizer       = "registry.k8s.io/sig-storage/csi-resizer:v1.10.1"
-	defaultCSISnapshotter   = "registry.k8s.io/sig-storage/csi-snapshotter:v7.0.2"
-	defaultCSINodeRegistrar = "registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.10.1"
+	defaultLVMImage              = "openebs/lvm-driver:1.9.1"
+	defaultHostpathImage         = "openebs/provisioner-localpv:4.5.0"
+	defaultZFSImage              = "openebs/zfs-driver:2.10.1"
+	defaultRawfileImage          = "openebs/rawfile-localpv:0.14.1"
+	defaultHelperImage           = "openebs/linux-utils:4.5.0"
+	defaultCSIProvisioner        = "registry.k8s.io/sig-storage/csi-provisioner:v4.0.1"
+	defaultCSIResizer            = "registry.k8s.io/sig-storage/csi-resizer:v1.10.1"
+	defaultCSISnapshotter        = "registry.k8s.io/sig-storage/csi-snapshotter:v7.0.2"
+	defaultCSINodeRegistrar      = "registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.10.1"
 	defaultCSIAttacher           = "registry.k8s.io/sig-storage/csi-attacher:v4.8.1"
 	defaultCSISnapshotController = "registry.k8s.io/sig-storage/snapshot-controller:v8.2.0"
 	defaultMayastorTag           = "v2.11.1"
-	defaultEtcdImage        = "openebs/etcd:3.6.4-debian-12-r0"
+	defaultEtcdImage             = "openebs/etcd:3.6.4-debian-12-r0"
 )
 
 func resolveImage(override, defaultImage string) string {
@@ -38,6 +38,8 @@ func resolveImage(override, defaultImage string) string {
 func boolPtr(b bool) *bool { return &b }
 
 func int32Ptr(i int32) *int32 { return &i }
+
+var intOrString1 = intstr.FromInt32(1)
 
 // ---- LVM Resources ----
 
@@ -209,7 +211,7 @@ func lvmNodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSet {
 				ObjectMeta: metav1.ObjectMeta{Labels: labels},
 				Spec: corev1.PodSpec{
 					ServiceAccountName: "openebs-lvm-controller",
-					HostNetwork: false,
+					HostNetwork:        false,
 					Containers: []corev1.Container{
 						{
 							Name:  "csi-node-driver-registrar",
@@ -317,9 +319,9 @@ func lvmStorageClass(name string, cfg *storagev1alpha1.LVMConfig) *storagev1.Sto
 				"storageclass.kubernetes.io/is-default-class": boolToStr(cfg.IsDefaultClass),
 			},
 		},
-		Provisioner:        lvmCSIDriverName,
-		ReclaimPolicy:      &deletePolicy,
-		VolumeBindingMode:  &volumeBindingWaitForFirstConsumer,
+		Provisioner:          lvmCSIDriverName,
+		ReclaimPolicy:        &deletePolicy,
+		VolumeBindingMode:    &volumeBindingWaitForFirstConsumer,
 		AllowVolumeExpansion: &allowExpansion,
 		Parameters: map[string]string{
 			"storage":  "lvm",
@@ -381,9 +383,9 @@ func hostpathDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployment {
 			Labels:    lbls,
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas:  &replicas,
-			Strategy:  appsv1.DeploymentStrategy{Type: appsv1.RecreateDeploymentStrategyType},
-			Selector:  &metav1.LabelSelector{MatchLabels: lbls},
+			Replicas: &replicas,
+			Strategy: appsv1.DeploymentStrategy{Type: appsv1.RecreateDeploymentStrategyType},
+			Selector: &metav1.LabelSelector{MatchLabels: lbls},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{Labels: lbls},
 				Spec: corev1.PodSpec{
@@ -587,7 +589,7 @@ func zfsNodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSet {
 				ObjectMeta: metav1.ObjectMeta{Labels: labels},
 				Spec: corev1.PodSpec{
 					ServiceAccountName: "openebs-zfs-controller",
-					HostNetwork: true,
+					HostNetwork:        true,
 					Containers: []corev1.Container{
 						{
 							Name:  "csi-node-driver-registrar",
@@ -703,9 +705,9 @@ func zfsStorageClass(name string, cfg *storagev1alpha1.ZFSConfig) *storagev1.Sto
 				"storageclass.kubernetes.io/is-default-class": boolToStr(cfg.IsDefaultClass),
 			},
 		},
-		Provisioner:        zfsCSIDriverName,
-		ReclaimPolicy:      &deletePolicy,
-		VolumeBindingMode:  &volumeBindingWaitForFirstConsumer,
+		Provisioner:          zfsCSIDriverName,
+		ReclaimPolicy:        &deletePolicy,
+		VolumeBindingMode:    &volumeBindingWaitForFirstConsumer,
 		AllowVolumeExpansion: &allowExpansion,
 		Parameters: map[string]string{
 			"poolname": poolName,
@@ -764,9 +766,9 @@ func rawfileDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deployment {
 			Labels:    labels,
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas:  &replicas,
-			Strategy:  appsv1.DeploymentStrategy{Type: appsv1.RecreateDeploymentStrategyType},
-			Selector:  &metav1.LabelSelector{MatchLabels: labels},
+			Replicas: &replicas,
+			Strategy: appsv1.DeploymentStrategy{Type: appsv1.RecreateDeploymentStrategyType},
+			Selector: &metav1.LabelSelector{MatchLabels: labels},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{Labels: labels},
 				Spec: corev1.PodSpec{
@@ -806,9 +808,9 @@ func rawfileStorageClass(name string, cfg *storagev1alpha1.RawfileConfig) *stora
 				"storageclass.kubernetes.io/is-default-class": boolToStr(cfg.IsDefaultClass),
 			},
 		},
-		Provisioner:        "rawfile.csi.openebs.io",
-		ReclaimPolicy:      &deletePolicy,
-		VolumeBindingMode:  &volumeBindingWaitForFirstConsumer,
+		Provisioner:          "rawfile.csi.openebs.io",
+		ReclaimPolicy:        &deletePolicy,
+		VolumeBindingMode:    &volumeBindingWaitForFirstConsumer,
 		AllowVolumeExpansion: &allowExpansion,
 		Parameters: map[string]string{
 			"basePath": basePath,
@@ -883,7 +885,7 @@ func mayastorEtcdStatefulSet(instance *storagev1alpha1.OpenEBS) *appsv1.Stateful
 	podAnnotations := map[string]string{}
 	if instance.Spec.Mayastor != nil && instance.Spec.Mayastor.EtcdVeleroBackup {
 		podAnnotations = map[string]string{
-			"backup.velero.io/backup-volumes":    "data",
+			"backup.velero.io/backup-volumes":     "data",
 			"pre.hook.backup.velero.io/container": "etcd",
 			"pre.hook.backup.velero.io/command":   `["/bin/sh","-c","etcdctl snapshot save /bitnami/etcd/velero-etcd-snapshot.db && sync"]`,
 			"pre.hook.backup.velero.io/timeout":   "5m",
@@ -946,6 +948,7 @@ func mayastorEtcdStatefulSet(instance *storagev1alpha1.OpenEBS) *appsv1.Stateful
 							{Name: "ETCD_AUTO_COMPACTION_MODE", Value: "revision"},
 							{Name: "ETCD_AUTO_COMPACTION_RETENTION", Value: "100"},
 							{Name: "ETCD_DATA_DIR", Value: "/bitnami/etcd/data"},
+							{Name: "ETCD_QUOTA_BACKEND_BYTES", Value: "8589934592"},
 						},
 						Ports: []corev1.ContainerPort{
 							{Name: "client", ContainerPort: 2379},
@@ -1055,10 +1058,34 @@ func mayastorAgentCoreDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Depl
 							Image: coreImg,
 							Args: []string{
 								"--store=http://mayastor-etcd:2379",
+								"--request-timeout=5s",
+								"--cache-period=30s",
 								"--grpc-server-addr=[::]:50051",
+								"--pool-commitment=250%",
+								"--snapshot-commitment=40%",
+								"--volume-commitment-initial=40%",
+								"--volume-commitment=40%",
+								"--fmt-style=pretty",
+								"--ansi-colors=true",
+								"--create-volume-limit=10",
 							},
 							Ports: []corev1.ContainerPort{
 								{Name: "grpc", ContainerPort: 50051},
+							},
+							Env: []corev1.EnvVar{
+								{Name: "RUST_LOG", Value: "info"},
+								{Name: "MY_POD_NAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"}}},
+								{Name: "MY_POD_NAMESPACE", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}}},
+							},
+							Resources: corev1.ResourceRequirements{
+								Limits: corev1.ResourceList{
+									corev1.ResourceCPU:    resource.MustParse("1000m"),
+									corev1.ResourceMemory: resource.MustParse("128Mi"),
+								},
+								Requests: corev1.ResourceList{
+									corev1.ResourceCPU:    resource.MustParse("500m"),
+									corev1.ResourceMemory: resource.MustParse("32Mi"),
+								},
 							},
 						},
 						{
@@ -1078,6 +1105,16 @@ func mayastorAgentCoreDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Depl
 								{Name: "RUST_LOG", Value: "info"},
 								{Name: "MY_POD_NAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"}}},
 								{Name: "MY_POD_NAMESPACE", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}}},
+							},
+							Resources: corev1.ResourceRequirements{
+								Limits: corev1.ResourceList{
+									corev1.ResourceCPU:    resource.MustParse("100m"),
+									corev1.ResourceMemory: resource.MustParse("64Mi"),
+								},
+								Requests: corev1.ResourceList{
+									corev1.ResourceCPU:    resource.MustParse("100m"),
+									corev1.ResourceMemory: resource.MustParse("16Mi"),
+								},
 							},
 						},
 					},
@@ -1099,6 +1136,7 @@ func mayastorAgentCoreService() *corev1.Service {
 			Selector: lbls,
 			Ports: []corev1.ServicePort{
 				{Name: "grpc", Port: 50051},
+				{Name: "ha-cluster", Port: 50052},
 			},
 		},
 	}
@@ -1137,10 +1175,48 @@ func mayastorAPIRestDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Deploy
 							"--core-grpc=https://" + mayastorAgentCoreName + ":50051",
 							"--ansi-colors=true",
 							"--fmt-style=pretty",
+							"--core-health-freq=20s",
 						},
 						Ports: []corev1.ContainerPort{
 							{Name: "http", ContainerPort: 8080},
 							{Name: "rest", ContainerPort: 8081},
+						},
+						Env: []corev1.EnvVar{
+							{Name: "RUST_LOG", Value: "info"},
+						},
+						Resources: corev1.ResourceRequirements{
+							Limits: corev1.ResourceList{
+								corev1.ResourceCPU:    resource.MustParse("100m"),
+								corev1.ResourceMemory: resource.MustParse("64Mi"),
+							},
+							Requests: corev1.ResourceList{
+								corev1.ResourceCPU:    resource.MustParse("50m"),
+								corev1.ResourceMemory: resource.MustParse("32Mi"),
+							},
+						},
+						ReadinessProbe: &corev1.Probe{
+							ProbeHandler: corev1.ProbeHandler{
+								HTTPGet: &corev1.HTTPGetAction{
+									Path: "/ready",
+									Port: intstr.FromInt32(8081),
+								},
+							},
+							FailureThreshold:    3,
+							InitialDelaySeconds: 1,
+							PeriodSeconds:       20,
+							TimeoutSeconds:      5,
+						},
+						LivenessProbe: &corev1.Probe{
+							ProbeHandler: corev1.ProbeHandler{
+								HTTPGet: &corev1.HTTPGetAction{
+									Path: "/live",
+									Port: intstr.FromInt32(8081),
+								},
+							},
+							FailureThreshold:    3,
+							InitialDelaySeconds: 1,
+							PeriodSeconds:       30,
+							TimeoutSeconds:      5,
 						},
 					}},
 				},
@@ -1160,8 +1236,8 @@ func mayastorAPIRestService() *corev1.Service {
 		Spec: corev1.ServiceSpec{
 			Selector: lbls,
 			Ports: []corev1.ServicePort{
-				{Name: "http", Port: 8080},
-				{Name: "rest", Port: 8081},
+				{Name: "https", Port: 8080},
+				{Name: "http", Port: 8081},
 			},
 		},
 	}
@@ -1199,6 +1275,7 @@ func mayastorCSIControllerDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.
 				ObjectMeta: metav1.ObjectMeta{Labels: lbls},
 				Spec: corev1.PodSpec{
 					HostNetwork:        true,
+					DNSPolicy:          corev1.DNSClusterFirstWithHostNet,
 					ServiceAccountName: mayastorServiceAccountName,
 					Containers: []corev1.Container{
 						{
@@ -1279,6 +1356,19 @@ func mayastorCSIControllerDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.
 								"--ansi-colors=true",
 								"--fmt-style=pretty",
 							},
+							Env: []corev1.EnvVar{
+								{Name: "RUST_LOG", Value: "info"},
+							},
+							Resources: corev1.ResourceRequirements{
+								Limits: corev1.ResourceList{
+									corev1.ResourceCPU:    resource.MustParse("32m"),
+									corev1.ResourceMemory: resource.MustParse("128Mi"),
+								},
+								Requests: corev1.ResourceList{
+									corev1.ResourceCPU:    resource.MustParse("16m"),
+									corev1.ResourceMemory: resource.MustParse("64Mi"),
+								},
+							},
 							VolumeMounts: []corev1.VolumeMount{
 								{Name: "socket-dir", MountPath: socketDir},
 							},
@@ -1308,15 +1398,24 @@ func mayastorIOEngineDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.Daemon
 			Labels:    lbls,
 		},
 		Spec: appsv1.DaemonSetSpec{
-			Selector: &metav1.LabelSelector{MatchLabels: lbls},
+			Selector:        &metav1.LabelSelector{MatchLabels: lbls},
+			MinReadySeconds: 10,
+			UpdateStrategy:  appsv1.DaemonSetUpdateStrategy{Type: appsv1.OnDeleteDaemonSetStrategyType},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{Labels: lbls},
 				Spec: corev1.PodSpec{
-					NodeSelector: map[string]string{"openebs.io/engine": "mayastor"},
-					HostNetwork:  true,
+					ServiceAccountName: mayastorServiceAccountName,
+					NodeSelector: map[string]string{
+						"openebs.io/engine":  "mayastor",
+						"kubernetes.io/arch": "amd64",
+					},
+					HostNetwork: true,
+					DNSPolicy:   corev1.DNSClusterFirstWithHostNet,
 					Containers: []corev1.Container{{
-						Name:  "io-engine",
-						Image: ioEngineImg,
+						Name:            "io-engine",
+						Image:           ioEngineImg,
+						ImagePullPolicy: corev1.PullIfNotPresent,
+						Command:         []string{"io-engine"},
 						SecurityContext: &corev1.SecurityContext{
 							Privileged: boolPtr(true),
 						},
@@ -1343,6 +1442,9 @@ func mayastorIOEngineDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.Daemon
 							{Name: "NVMF_TCP_BUF_CACHE_SIZE", Value: "64"},
 							{Name: "NVMF_TCP_MAX_QPAIRS_PER_CTRL", Value: "32"},
 							{Name: "NVMF_TCP_MAX_QUEUE_DEPTH", Value: "32"},
+							{Name: "NVMF_TCP_IN_CAPSULE_DATA_SIZE", Value: "4096"},
+							{Name: "NVMF_TCP_MAX_IO_SIZE", Value: "131072"},
+							{Name: "NVMF_TCP_IO_UNIT_SIZE", Value: "131072"},
 							{Name: "NVME_TIMEOUT", Value: "110s"},
 							{Name: "NVME_TIMEOUT_ADMIN", Value: "30s"},
 							{Name: "NVME_KATO", Value: "10s"},
@@ -1351,9 +1453,22 @@ func mayastorIOEngineDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.Daemon
 							{Name: "MY_POD_IP", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "status.podIP"}}},
 							{Name: "NEXUS_NVMF_ANA_ENABLE", Value: "1"},
 							{Name: "NEXUS_NVMF_RESV_ENABLE", Value: "1"},
+							{Name: "POOL_HANDLE_RESCAN_PERIOD", Value: "5m"},
 						},
 						Ports: []corev1.ContainerPort{
 							{Name: "io-engine", ContainerPort: 10124, Protocol: corev1.ProtocolTCP},
+						},
+						Resources: corev1.ResourceRequirements{
+							Limits: corev1.ResourceList{
+								corev1.ResourceCPU:                   resource.MustParse("2"),
+								corev1.ResourceMemory:                resource.MustParse("1Gi"),
+								corev1.ResourceName("hugepages-2Mi"): resource.MustParse("2Gi"),
+							},
+							Requests: corev1.ResourceList{
+								corev1.ResourceCPU:                   resource.MustParse("2"),
+								corev1.ResourceMemory:                resource.MustParse("1Gi"),
+								corev1.ResourceName("hugepages-2Mi"): resource.MustParse("2Gi"),
+							},
 						},
 						VolumeMounts: []corev1.VolumeMount{
 							{Name: "device", MountPath: "/dev"},
@@ -1361,6 +1476,30 @@ func mayastorIOEngineDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.Daemon
 							{Name: "dshm", MountPath: "/dev/shm"},
 							{Name: "configlocation", MountPath: "/var/local/mayastor/io-engine/"},
 							{Name: "hugepages-2mi", MountPath: "/dev/hugepages-2mi"},
+						},
+					}, {
+						Name:  "metrics-exporter-io-engine",
+						Image: mayastorImage(tag, "metrics-exporter-io-engine"),
+						Args: []string{
+							"--metrics-endpoint=[::]:9502",
+							"--grpc-port=10124",
+							"--fmt-style=pretty",
+							"--ansi-colors=true",
+							"--rest-endpoint=http://" + mayastorAPIRestName + ":8081",
+						},
+						Env: []corev1.EnvVar{
+							{Name: "MY_NODE_NAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.nodeName"}}},
+							{Name: "MY_POD_IP", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "status.podIP"}}},
+						},
+						Ports: []corev1.ContainerPort{
+							{Name: "metrics", ContainerPort: 9502, Protocol: corev1.ProtocolTCP},
+						},
+						VolumeMounts: []corev1.VolumeMount{
+							{Name: "device", MountPath: "/dev"},
+							{Name: "udev", MountPath: "/run/udev"},
+							{Name: "dshm", MountPath: "/dev/shm"},
+							{Name: "hugepages-2mi", MountPath: "/dev/hugepages-2mi"},
+							{Name: "configlocation", MountPath: "/var/local/mayastor/io-engine/"},
 						},
 					}},
 					Volumes: []corev1.Volume{
@@ -1371,6 +1510,23 @@ func mayastorIOEngineDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.Daemon
 						{Name: "configlocation", VolumeSource: corev1.VolumeSource{HostPath: &corev1.HostPathVolumeSource{Path: "/var/local/mayastor/io-engine/", Type: &hostpathDirOrCreate}}},
 					},
 				},
+			},
+		},
+	}
+}
+
+func mayastorMetricsExporterService() *corev1.Service {
+	lbls := labels("mayastor-io-engine")
+	return &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      mayastorMetricsExporterSvcName,
+			Namespace: mayastorNamespace,
+			Labels:    lbls,
+		},
+		Spec: corev1.ServiceSpec{
+			Selector: lbls,
+			Ports: []corev1.ServicePort{
+				{Name: "metrics", Port: 9502, TargetPort: intstr.FromInt32(9502)},
 			},
 		},
 	}
@@ -1396,12 +1552,18 @@ func mayastorCSINodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonS
 			Labels:    lbls,
 		},
 		Spec: appsv1.DaemonSetSpec{
-			Selector: &metav1.LabelSelector{MatchLabels: lbls},
+			Selector:        &metav1.LabelSelector{MatchLabels: lbls},
+			MinReadySeconds: 10,
+			UpdateStrategy: appsv1.DaemonSetUpdateStrategy{
+				Type:          appsv1.RollingUpdateDaemonSetStrategyType,
+				RollingUpdate: &appsv1.RollingUpdateDaemonSet{MaxUnavailable: &intOrString1},
+			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{Labels: lbls},
 				Spec: corev1.PodSpec{
 					ServiceAccountName: mayastorServiceAccountName,
 					HostNetwork:        true,
+					DNSPolicy:          corev1.DNSClusterFirstWithHostNet,
 					NodeSelector:       map[string]string{"openebs.io/csi-node": "mayastor"},
 					Containers: []corev1.Container{
 						{
@@ -1425,6 +1587,9 @@ func mayastorCSINodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonS
 									corev1.ResourceMemory: resource.MustParse("50Mi"),
 								},
 							},
+							Ports: []corev1.ContainerPort{
+								{Name: "mayastor-node", ContainerPort: 10199, Protocol: corev1.ProtocolTCP},
+							},
 						},
 						{
 							Name:  "csi-node",
@@ -1442,9 +1607,11 @@ func mayastorCSINodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonS
 								"--grpc-port=10199",
 								"--nvme-io-timeout=110s10s",
 								"--nvme-core-io-timeout=110s10s",
+								"--nvme-ctrl-loss-tmo=1980",
 								"--nvme-nr-io-queues=2",
 								"--nvme-connect-fallback=true",
 								"--kubelet-path=/var/lib/kubelet",
+								"--node-selector=openebs.io/csi-node=mayastor",
 								"--fmt-style=pretty",
 								"--ansi-colors=true",
 							},
@@ -1460,6 +1627,16 @@ func mayastorCSINodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonS
 								{Name: "run-udev", MountPath: "/run/udev"},
 								{Name: "plugin-dir", MountPath: "/csi"},
 								{Name: "kubelet-dir", MountPath: "/var/lib/kubelet", MountPropagation: &hostpathMountPropagation},
+							},
+							Resources: corev1.ResourceRequirements{
+								Limits: corev1.ResourceList{
+									corev1.ResourceCPU:    resource.MustParse("100m"),
+									corev1.ResourceMemory: resource.MustParse("128Mi"),
+								},
+								Requests: corev1.ResourceList{
+									corev1.ResourceCPU:    resource.MustParse("100m"),
+									corev1.ResourceMemory: resource.MustParse("64Mi"),
+								},
 							},
 						},
 					},
@@ -1514,6 +1691,16 @@ func mayastorOperatorDiskpoolDeployment(instance *storagev1alpha1.OpenEBS) *apps
 							{Name: "RUST_LOG", Value: "info"},
 							{Name: "MY_POD_NAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"}}},
 						},
+						Resources: corev1.ResourceRequirements{
+							Limits: corev1.ResourceList{
+								corev1.ResourceCPU:    resource.MustParse("100m"),
+								corev1.ResourceMemory: resource.MustParse("32Mi"),
+							},
+							Requests: corev1.ResourceList{
+								corev1.ResourceCPU:    resource.MustParse("50m"),
+								corev1.ResourceMemory: resource.MustParse("16Mi"),
+							},
+						},
 					}},
 				},
 			},
@@ -1536,12 +1723,18 @@ func mayastorHANodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSe
 			Labels:    lbls,
 		},
 		Spec: appsv1.DaemonSetSpec{
-			Selector: &metav1.LabelSelector{MatchLabels: lbls},
+			Selector:        &metav1.LabelSelector{MatchLabels: lbls},
+			MinReadySeconds: 10,
+			UpdateStrategy: appsv1.DaemonSetUpdateStrategy{
+				Type:          appsv1.RollingUpdateDaemonSetStrategyType,
+				RollingUpdate: &appsv1.RollingUpdateDaemonSet{MaxUnavailable: &intOrString1},
+			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{Labels: lbls},
 				Spec: corev1.PodSpec{
 					ServiceAccountName: mayastorServiceAccountName,
 					HostNetwork:        true,
+					DNSPolicy:          corev1.DNSClusterFirstWithHostNet,
 					Containers: []corev1.Container{{
 						Name:  "agent-ha-node",
 						Image: img,
@@ -1565,6 +1758,16 @@ func mayastorHANodeDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSe
 						},
 						Ports: []corev1.ContainerPort{
 							{Name: "ha-node", ContainerPort: 50053, Protocol: corev1.ProtocolTCP},
+						},
+						Resources: corev1.ResourceRequirements{
+							Limits: corev1.ResourceList{
+								corev1.ResourceCPU:    resource.MustParse("100m"),
+								corev1.ResourceMemory: resource.MustParse("64Mi"),
+							},
+							Requests: corev1.ResourceList{
+								corev1.ResourceCPU:    resource.MustParse("100m"),
+								corev1.ResourceMemory: resource.MustParse("64Mi"),
+							},
 						},
 						VolumeMounts: []corev1.VolumeMount{
 							{Name: "device", MountPath: "/dev"},

@@ -55,23 +55,24 @@ const (
 	mayastorLabelKey   = "openebs.io/engine"
 	mayastorLabelValue = "mayastor"
 
-	mayastorServiceAccountName   = "mayastor-service-account"
-	mayastorClusterRoleName      = "mayastor-role"
+	mayastorServiceAccountName     = "mayastor-service-account"
+	mayastorClusterRoleName        = "mayastor-role"
 	mayastorClusterRoleBindingName = "mayastor-binding"
-	mayastorEtcdName             = "mayastor-etcd"
-	mayastorEtcdServiceName      = "mayastor-etcd"
-	mayastorAgentCoreName        = "mayastor-agent-core"
-	mayastorAgentCoreServiceName = "mayastor-agent-core"
-	mayastorAPIRestName          = "mayastor-api-rest"
-	mayastorAPIRestServiceName   = "mayastor-api-rest"
-	mayastorCSIControllerName    = "mayastor-csi-controller"
-	mayastorIOEngineName         = "mayastor-io-engine"
-	mayastorCSINodeName          = "mayastor-csi-node"
-	mayastorDiskpoolName         = "mayastor-operator-diskpool"
-	mayastorHANodeName           = "mayastor-agent-ha-node"
-	mayastorCSIDriverName        = "csi.nvmf.openebs.io"
-	mayastorSCName               = "mayastor"
-	mayastorSnapshotClassName    = "mayastor-snapshot"
+	mayastorEtcdName               = "mayastor-etcd"
+	mayastorEtcdServiceName        = "mayastor-etcd"
+	mayastorAgentCoreName          = "mayastor-agent-core"
+	mayastorAgentCoreServiceName   = "mayastor-agent-core"
+	mayastorAPIRestName            = "mayastor-api-rest"
+	mayastorAPIRestServiceName     = "mayastor-api-rest"
+	mayastorCSIControllerName      = "mayastor-csi-controller"
+	mayastorIOEngineName           = "mayastor-io-engine"
+	mayastorMetricsExporterSvcName = "mayastor-metrics-exporter-io-engine"
+	mayastorCSINodeName            = "mayastor-csi-node"
+	mayastorDiskpoolName           = "mayastor-operator-diskpool"
+	mayastorHANodeName             = "mayastor-agent-ha-node"
+	mayastorCSIDriverName          = "csi.nvmf.openebs.io"
+	mayastorSCName                 = "mayastor"
+	mayastorSnapshotClassName      = "mayastor-snapshot"
 )
 
 func (d *Deployer) deployLVM(ctx context.Context) storagev1alpha1.EngineStatus {
@@ -310,6 +311,11 @@ func (d *Deployer) deployMayastor(ctx context.Context) storagev1alpha1.EngineSta
 		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
 	}
 
+	if err := d.apply(ctx, mayastorMetricsExporterService()); err != nil {
+		logger.Error(err, "failed to apply metrics-exporter Service")
+		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
+	}
+
 	if err := d.applyDaemonSet(ctx, mayastorCSINodeDaemonSet(d.instance)); err != nil {
 		logger.Error(err, "failed to apply csi-node DaemonSet")
 		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
@@ -376,6 +382,7 @@ func (d *Deployer) cleanup(ctx context.Context) error {
 		mayastorAPIRestDeployment(d.instance),
 		mayastorCSIControllerDeployment(d.instance),
 		mayastorIOEngineDaemonSet(d.instance),
+		mayastorMetricsExporterService(),
 		mayastorCSINodeDaemonSet(d.instance),
 		mayastorHANodeDaemonSet(d.instance),
 		mayastorOperatorDiskpoolDeployment(d.instance),

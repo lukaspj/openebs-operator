@@ -1002,9 +1002,9 @@ func TestMayastorEtcdStatefulSetCustomStorage(t *testing.T) {
 	instance := &storagev1alpha1.OpenEBS{
 		Spec: storagev1alpha1.OpenEBSSpec{
 			Mayastor: &storagev1alpha1.MayastorConfig{
-				Enabled:               true,
-				EtcdStorageSize:       "20Gi",
-				EtcdStorageClassName:  "fast-ssd",
+				Enabled:              true,
+				EtcdStorageSize:      "20Gi",
+				EtcdStorageClassName: "fast-ssd",
 			},
 		},
 	}
@@ -1061,8 +1061,8 @@ func TestMayastorAgentCoreService(t *testing.T) {
 	if svc.Namespace != mayastorNamespace {
 		t.Errorf("expected namespace %s, got %s", mayastorNamespace, svc.Namespace)
 	}
-	if len(svc.Spec.Ports) != 1 || svc.Spec.Ports[0].Port != 50051 {
-		t.Errorf("expected port 50051, got %v", svc.Spec.Ports)
+	if len(svc.Spec.Ports) != 2 || svc.Spec.Ports[0].Port != 50051 || svc.Spec.Ports[1].Port != 50052 {
+		t.Errorf("expected ports 50051+50052, got %v", svc.Spec.Ports)
 	}
 	if svc.Spec.Selector["app.kubernetes.io/component"] != "mayastor-agent-core" {
 		t.Errorf("expected selector component mayastor-agent-core, got %v", svc.Spec.Selector)
