@@ -790,3 +790,186 @@ func TestExpectedResourcesIncludesEnabledEngines(t *testing.T) {
 		t.Error("ZFS controller should NOT be in resources when disabled")
 	}
 }
+
+func minimalStatefulSet() *appsv1.StatefulSet {
+	replicas := int32(1)
+	return &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-sts",
+			Namespace: "default",
+		},
+		Spec: appsv1.StatefulSetSpec{
+			ServiceName: "test-svc",
+			Replicas:    &replicas,
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{"app": "test"},
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": "test"}},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{{Name: "test", Image: "img:v1"}},
+				},
+			},
+		},
+	}
+}
+
+func TestDeployerApplyStatefulSetCreates(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	_ = appsv1.AddToScheme(scheme)
+
+	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+	d := &Deployer{Client: cl, Scheme: scheme}
+
+	sts := minimalStatefulSet()
+	ctx := context.Background()
+	if err := d.applyStatefulSet(ctx, sts); err != nil {
+		t.Fatalf("applyStatefulSet failed: %v", err)
+	}
+
+	got := &appsv1.StatefulSet{}
+	if err := cl.Get(ctx, types.NamespacedName{Name: "test-sts", Namespace: "default"}, got); err != nil {
+		t.Fatalf("StatefulSet not found: %v", err)
+	}
+}
+
+func TestDeployerApplyStatefulSetUpdatesWithoutDrift(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	_ = appsv1.AddToScheme(scheme)
+
+	existing := minimalStatefulSet()
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existing).Build()
+	d := &Deployer{Client: cl, Scheme: scheme}
+
+	desired := minimalStatefulSet()
+	desired.Spec.Template.Spec.Containers[0].Image = "img:v2"
+
+	ctx := context.Background()
+	if err := d.applyStatefulSet(ctx, desired); err != nil {
+		t.Fatalf("applyStatefulSet failed: %v", err)
+	}
+
+	got := &appsv1.StatefulSet{}
+	if err := cl.Get(ctx, types.NamespacedName{Name: "test-sts", Namespace: "default"}, got); err != nil {
+		t.Fatalf("StatefulSet not found: %v", err)
+	}
+	if got.Spec.Template.Spec.Containers[0].Image != "img:v2" {
+		t.Errorf("expected updated image img:v2, got %s", got.Spec.Template.Spec.Containers[0].Image)
+	}
+}
+
+func TestDeployerApplyStatefulSetDriftOwnedDeletes(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	_ = appsv1.AddToScheme(scheme)
+
+	instance := &storagev1alpha1.OpenEBS{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "openebs",
+			UID:  types.UID("test-uid"),
+		},
+	}
+	existing := minimalStatefulSet()
+	existing.OwnerReferences = ownerRefs(instance)
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existing).Build()
+	d := &Deployer{Client: cl, Scheme: scheme, instance: instance}
+
+	desired := minimalStatefulSet()
+	desired.Spec.ServiceName = "other-service"
+
+	ctx := context.Background()
+	err := d.applyStatefulSet(ctx, desired)
+	if err == nil {
+		t.Fatal("expected requeue error after drift deletion")
+	}
+
+	got := &appsv1.StatefulSet{}
+	err = cl.Get(ctx, types.NamespacedName{Name: "test-sts", Namespace: "default"}, got)
+	if err == nil {
+		t.Error("expected drifted StatefulSet to be deleted")
+	}
+}
+
+func TestDeployerApplyStatefulSetDriftLabelOwnedDeletes(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	_ = appsv1.AddToScheme(scheme)
+
+	existing := minimalStatefulSet()
+	existing.Labels = map[string]string{managedLabelKey: managedLabelValue}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existing).Build()
+	instance := &storagev1alpha1.OpenEBS{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "openebs",
+			UID:  types.UID("new-uid"),
+		},
+	}
+	d := &Deployer{Client: cl, Scheme: scheme, instance: instance}
+
+	desired := minimalStatefulSet()
+	desired.Spec.ServiceName = "other-service"
+
+	ctx := context.Background()
+	err := d.applyStatefulSet(ctx, desired)
+	if err == nil || !strings.Contains(err.Error(), "serviceName") {
+		t.Errorf("expected requeue error naming drifted field, got: %v", err)
+	}
+
+	got := &appsv1.StatefulSet{}
+	err = cl.Get(ctx, types.NamespacedName{Name: "test-sts", Namespace: "default"}, got)
+	if err == nil {
+		t.Error("expected label-owned drifted StatefulSet to be deleted")
+	}
+}
+
+func TestDeployerApplyStatefulSetDriftForeignErrors(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	_ = appsv1.AddToScheme(scheme)
+
+	existing := minimalStatefulSet()
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existing).Build()
+	d := &Deployer{Client: cl, Scheme: scheme, instance: &storagev1alpha1.OpenEBS{}}
+
+	desired := minimalStatefulSet()
+	desired.Spec.ServiceName = "other-service"
+
+	ctx := context.Background()
+	err := d.applyStatefulSet(ctx, desired)
+	if err == nil || !strings.Contains(err.Error(), "not managed") {
+		t.Errorf("expected descriptive error for foreign StatefulSet, got: %v", err)
+	}
+
+	got := &appsv1.StatefulSet{}
+	err = cl.Get(ctx, types.NamespacedName{Name: "test-sts", Namespace: "default"}, got)
+	if err != nil {
+		t.Errorf("foreign StatefulSet should not be deleted: %v", err)
+	}
+}
+
+func TestStsImmutableDrift(t *testing.T) {
+	a := minimalStatefulSet()
+	b := minimalStatefulSet()
+	if stsImmutableDrift(a, b) {
+		t.Error("identical StatefulSets should not drift")
+	}
+
+	b.Spec.ServiceName = "other-svc"
+	if !stsImmutableDrift(a, b) {
+		t.Error("serviceName change should be detected as drift")
+	}
+
+	b = minimalStatefulSet()
+	b.Spec.Selector.MatchLabels["app"] = "other"
+	if !stsImmutableDrift(a, b) {
+		t.Error("selector change should be detected as drift")
+	}
+
+	b = minimalStatefulSet()
+	b.Spec.Template.Spec.Containers[0].Image = "img:v2"
+	if stsImmutableDrift(a, b) {
+		t.Error("template image change should NOT be detected as drift")
+	}
+}

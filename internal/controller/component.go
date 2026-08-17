@@ -1070,7 +1070,7 @@ func mayastorAgentCoreDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Depl
 								"--create-volume-limit=10",
 							},
 							Ports: []corev1.ContainerPort{
-								{Name: "grpc", ContainerPort: 50051},
+								{ContainerPort: 50051},
 							},
 							Env: []corev1.EnvVar{
 								{Name: "RUST_LOG", Value: "info"},
@@ -1099,7 +1099,7 @@ func mayastorAgentCoreDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.Depl
 								"--fmt-style=pretty",
 							},
 							Ports: []corev1.ContainerPort{
-								{Name: "grpc", ContainerPort: 50052},
+								{ContainerPort: 50052},
 							},
 							Env: []corev1.EnvVar{
 								{Name: "RUST_LOG", Value: "info"},

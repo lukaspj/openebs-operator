@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	storagev1alpha1 "github.com/aldershaab-it/openebs-operator/api/v1alpha1"
@@ -12,6 +13,7 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -34,6 +36,9 @@ type Deployer struct {
 // Engine labels and names.
 const (
 	openebsNamespace = "openebs"
+
+	managedLabelKey   = "app.kubernetes.io/managed-by"
+	managedLabelValue = "openebs-operator"
 
 	lvmControllerName = "openebs-lvm-controller"
 	lvmNodeName       = "openebs-lvm-node"
@@ -271,7 +276,7 @@ func (d *Deployer) deployMayastor(ctx context.Context) storagev1alpha1.EngineSta
 		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
 	}
 
-	if err := d.apply(ctx, mayastorEtcdStatefulSet(d.instance)); err != nil {
+	if err := d.applyStatefulSet(ctx, mayastorEtcdStatefulSet(d.instance)); err != nil {
 		logger.Error(err, "failed to apply etcd StatefulSet")
 		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
 	}
@@ -596,6 +601,69 @@ func (d *Deployer) apply(ctx context.Context, obj client.Object) error {
 	})
 }
 
+func (d *Deployer) applyStatefulSet(ctx context.Context, sts *appsv1.StatefulSet) error {
+	if d.instance != nil {
+		sts.SetOwnerReferences(ownerRefs(d.instance))
+	}
+
+	key := client.ObjectKeyFromObject(sts)
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		existing := &appsv1.StatefulSet{}
+		if err := d.Get(ctx, key, existing); err != nil {
+			if !errors.IsNotFound(err) {
+				return err
+			}
+			return d.Create(ctx, sts)
+		}
+
+		if drifted := stsImmutableDriftFields(existing, sts); len(drifted) > 0 {
+			if !d.isOperatorOwned(existing) {
+				return fmt.Errorf(
+					"StatefulSet %s/%s exists with different immutable spec (%s) and is not managed by this operator; delete it manually: kubectl -n %s delete sts %s",
+					existing.Namespace, existing.Name, strings.Join(drifted, ", "),
+					existing.Namespace, existing.Name)
+			}
+			if err := d.Delete(ctx, existing); err != nil {
+				return err
+			}
+			return fmt.Errorf(
+				"StatefulSet %s/%s immutable spec drift (%s): deleted, requeueing (pods recreated, PVCs retained)",
+				existing.Namespace, existing.Name, strings.Join(drifted, ", "))
+		}
+
+		sts.SetResourceVersion(existing.GetResourceVersion())
+		return d.Update(ctx, sts)
+	})
+}
+
+func (d *Deployer) isOperatorOwned(sts *appsv1.StatefulSet) bool {
+	if d.instance != nil && metav1.IsControlledBy(sts, d.instance) {
+		return true
+	}
+	return sts.GetLabels()[managedLabelKey] == managedLabelValue
+}
+
+func stsImmutableDrift(existing, desired *appsv1.StatefulSet) bool {
+	return len(stsImmutableDriftFields(existing, desired)) > 0
+}
+
+func stsImmutableDriftFields(existing, desired *appsv1.StatefulSet) []string {
+	var fields []string
+	if existing.Spec.ServiceName != desired.Spec.ServiceName {
+		fields = append(fields, "serviceName")
+	}
+	if existing.Spec.PodManagementPolicy != desired.Spec.PodManagementPolicy {
+		fields = append(fields, "podManagementPolicy")
+	}
+	if !equality.Semantic.DeepEqual(existing.Spec.Selector, desired.Spec.Selector) {
+		fields = append(fields, "selector")
+	}
+	if !equality.Semantic.DeepEqual(existing.Spec.VolumeClaimTemplates, desired.Spec.VolumeClaimTemplates) {
+		fields = append(fields, "volumeClaimTemplates")
+	}
+	return fields
+}
+
 func (d *Deployer) engineFailed(engine storagev1alpha1.OpenEBSEngine, err error) storagev1alpha1.EngineStatus {
 	return storagev1alpha1.EngineStatus{
 		Name:    engine,
@@ -608,7 +676,7 @@ func labels(component string) map[string]string {
 	return map[string]string{
 		"app.kubernetes.io/name":       "openebs",
 		"app.kubernetes.io/component":  component,
-		"app.kubernetes.io/managed-by": "openebs-operator",
+		managedLabelKey:                managedLabelValue,
 	}
 }
 
@@ -620,11 +688,10 @@ func ownerRefs(instance *storagev1alpha1.OpenEBS) []metav1.OwnerReference {
 
 func (d *Deployer) cleanupOrphans(ctx context.Context) error {
 	logger := log.FromContext(ctx)
-	managedLabel := "app.kubernetes.io/managed-by"
 	expected := expectedResources(d.instance)
 
 	var deps appsv1.DeploymentList
-	if err := d.List(ctx, &deps, client.InNamespace(openebsNamespace), client.MatchingLabels{managedLabel: "openebs-operator"}); err != nil {
+	if err := d.List(ctx, &deps, client.InNamespace(openebsNamespace), client.MatchingLabels{managedLabelKey: managedLabelValue}); err != nil {
 		return err
 	}
 	for _, dep := range deps.Items {
@@ -637,7 +704,7 @@ func (d *Deployer) cleanupOrphans(ctx context.Context) error {
 	}
 
 	var dss appsv1.DaemonSetList
-	if err := d.List(ctx, &dss, client.InNamespace(openebsNamespace), client.MatchingLabels{managedLabel: "openebs-operator"}); err != nil {
+	if err := d.List(ctx, &dss, client.InNamespace(openebsNamespace), client.MatchingLabels{managedLabelKey: managedLabelValue}); err != nil {
 		return err
 	}
 	for _, ds := range dss.Items {
@@ -650,7 +717,7 @@ func (d *Deployer) cleanupOrphans(ctx context.Context) error {
 	}
 
 	var sas corev1.ServiceAccountList
-	if err := d.List(ctx, &sas, client.InNamespace(openebsNamespace), client.MatchingLabels{managedLabel: "openebs-operator"}); err != nil {
+	if err := d.List(ctx, &sas, client.InNamespace(openebsNamespace), client.MatchingLabels{managedLabelKey: managedLabelValue}); err != nil {
 		return err
 	}
 	for _, sa := range sas.Items {
@@ -663,7 +730,7 @@ func (d *Deployer) cleanupOrphans(ctx context.Context) error {
 	}
 
 	var mayastorDeps appsv1.DeploymentList
-	if err := d.List(ctx, &mayastorDeps, client.InNamespace(mayastorNamespace), client.MatchingLabels{managedLabel: "openebs-operator"}); err != nil {
+	if err := d.List(ctx, &mayastorDeps, client.InNamespace(mayastorNamespace), client.MatchingLabels{managedLabelKey: managedLabelValue}); err != nil {
 		return err
 	}
 	for _, dep := range mayastorDeps.Items {
@@ -676,7 +743,7 @@ func (d *Deployer) cleanupOrphans(ctx context.Context) error {
 	}
 
 	var mayastorDss appsv1.DaemonSetList
-	if err := d.List(ctx, &mayastorDss, client.InNamespace(mayastorNamespace), client.MatchingLabels{managedLabel: "openebs-operator"}); err != nil {
+	if err := d.List(ctx, &mayastorDss, client.InNamespace(mayastorNamespace), client.MatchingLabels{managedLabelKey: managedLabelValue}); err != nil {
 		return err
 	}
 	for _, ds := range mayastorDss.Items {
@@ -689,7 +756,7 @@ func (d *Deployer) cleanupOrphans(ctx context.Context) error {
 	}
 
 	var mayastorSts appsv1.StatefulSetList
-	if err := d.List(ctx, &mayastorSts, client.InNamespace(mayastorNamespace), client.MatchingLabels{managedLabel: "openebs-operator"}); err != nil {
+	if err := d.List(ctx, &mayastorSts, client.InNamespace(mayastorNamespace), client.MatchingLabels{managedLabelKey: managedLabelValue}); err != nil {
 		return err
 	}
 	for _, sts := range mayastorSts.Items {
@@ -702,7 +769,7 @@ func (d *Deployer) cleanupOrphans(ctx context.Context) error {
 	}
 
 	var mayastorSas corev1.ServiceAccountList
-	if err := d.List(ctx, &mayastorSas, client.InNamespace(mayastorNamespace), client.MatchingLabels{managedLabel: "openebs-operator"}); err != nil {
+	if err := d.List(ctx, &mayastorSas, client.InNamespace(mayastorNamespace), client.MatchingLabels{managedLabelKey: managedLabelValue}); err != nil {
 		return err
 	}
 	for _, sa := range mayastorSas.Items {
@@ -715,7 +782,7 @@ func (d *Deployer) cleanupOrphans(ctx context.Context) error {
 	}
 
 	var crs rbacv1.ClusterRoleList
-	if err := d.List(ctx, &crs, client.MatchingLabels{managedLabel: "openebs-operator"}); err != nil {
+	if err := d.List(ctx, &crs, client.MatchingLabels{managedLabelKey: managedLabelValue}); err != nil {
 		return err
 	}
 	for _, cr := range crs.Items {
@@ -728,7 +795,7 @@ func (d *Deployer) cleanupOrphans(ctx context.Context) error {
 	}
 
 	var crbs rbacv1.ClusterRoleBindingList
-	if err := d.List(ctx, &crbs, client.MatchingLabels{managedLabel: "openebs-operator"}); err != nil {
+	if err := d.List(ctx, &crbs, client.MatchingLabels{managedLabelKey: managedLabelValue}); err != nil {
 		return err
 	}
 	for _, crb := range crbs.Items {
@@ -741,7 +808,7 @@ func (d *Deployer) cleanupOrphans(ctx context.Context) error {
 	}
 
 	var cds storagev1.CSIDriverList
-	if err := d.List(ctx, &cds, client.MatchingLabels{managedLabel: "openebs-operator"}); err != nil {
+	if err := d.List(ctx, &cds, client.MatchingLabels{managedLabelKey: managedLabelValue}); err != nil {
 		return err
 	}
 	for _, cd := range cds.Items {
@@ -754,7 +821,7 @@ func (d *Deployer) cleanupOrphans(ctx context.Context) error {
 	}
 
 	var scs storagev1.StorageClassList
-	if err := d.List(ctx, &scs, client.MatchingLabels{managedLabel: "openebs-operator"}); err != nil {
+	if err := d.List(ctx, &scs, client.MatchingLabels{managedLabelKey: managedLabelValue}); err != nil {
 		return err
 	}
 	for _, sc := range scs.Items {
