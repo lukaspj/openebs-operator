@@ -141,7 +141,7 @@ No Helm, no Tiller. Operator replaces `openebs/openebs` umbrella chart.
 - **Unstructured DeepCopy**: `unstructured.Unstructured` panics on `map[string]string` inside `Object`. Always use `map[string]interface{}` when constructing unstructured objects. See `mayastorVolumeSnapshotClass`.
 - **apply vs applyUnstructured**: Use `d.applyUnstructured` for resources not in the controller-runtime scheme (VolumeSnapshotClass, CRDs). The normal `d.apply` calls `DeepCopyObject()` which fails on unstructured.
 - **CRD delete**: Operator RBAC needs `delete` on `customresourcedefinitions` if cleanup removes CRDs. Currently granted.
-- **Kubelet plugin dir ≠ CSI driver name**: For Mayastor, the kubelet plugin directory is `io.openebs.mayastor` but the CSIDriver name is `csi.nvmf.openebs.io`. The registrar registration path and the CSIDriver object are different resources with different naming.
+- **Kubelet plugin dir ≠ CSI driver name**: For Mayastor, the kubelet plugin directory is `io.openebs.mayastor` but the CSIDriver name is `io.openebs.csi-mayastor` (upstream StorageClass provisioner). The registrar registration path and the CSIDriver object are different resources with different naming.
 
 ## E2e tests
 

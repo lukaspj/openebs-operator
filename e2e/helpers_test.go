@@ -59,7 +59,7 @@ func TestMain(m *testing.M) {
 const (
 	mayastorNamespace         = "mayastor"
 	openebsOperatorNamespace  = "openebs-operator-system"
-	mayastorCSIDriverName     = "csi.nvmf.openebs.io"
+	mayastorCSIDriverName     = "io.openebs.csi-mayastor"
 	defaultTimeout            = 90 * time.Second
 	defaultInterval           = 2 * time.Second
 	crName                    = "e2e-test"

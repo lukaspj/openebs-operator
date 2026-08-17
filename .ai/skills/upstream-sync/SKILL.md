@@ -214,7 +214,7 @@ Summary of resources operator deploys (19 total):
 | 11 | mayastor-service-account | ServiceAccount | — |
 | 12 | mayastor-role | ClusterRole | — |
 | 13 | mayastor-binding | ClusterRoleBinding | — |
-| 14 | csi.nvmf.openebs.io | CSIDriver | — |
+| 14 | io.openebs.csi-mayastor | CSIDriver | — |
 | 15 | mayastor | StorageClass | — |
 | 16 | volumesnapshotclasses.snapshot.storage.k8s.io | CRD | — |
 | 17 | volumesnapshots.snapshot.storage.k8s.io | CRD | — |
@@ -243,8 +243,8 @@ Summary of resources operator deploys (19 total):
   `--namespace=` arg was removed and crashes).
 - csi-node container: `--grpc-port=10199`, nvme args, `--kubelet-path=/var/lib/kubelet`,
   `--enable-rest`, `--enable-registration`, `--fmt-style=pretty`, `--ansi-colors=true`.
-- Kubelet plugin directory: `io.openebs.mayastor` (NOT `csi.nvmf.openebs.io`)
-  The CSIDriver name (`csi.nvmf.openebs.io`) is distinct from the kubelet
+- Kubelet plugin directory: `io.openebs.mayastor` (NOT `io.openebs.csi-mayastor`)
+  The CSIDriver name (`io.openebs.csi-mayastor`) is distinct from the kubelet
   plugin dir (`io.openebs.mayastor`).
 - CSI socket path: `/var/lib/csi/sockets/pluginproxy/csi.sock`
 - agent-core env: `MY_POD_NAME`, `MY_POD_NAMESPACE` (from fieldRef)
@@ -255,7 +255,7 @@ Summary of resources operator deploys (19 total):
   metrics-exporter (follow-up — needs its own image field).
 - VolumeSnapshot CRDs installed via embedded YAML from external-snapshotter v8.2.0,
   managed via `volume_snapshot.go`, applied as unstructured.
-- VolumeSnapshotClass `mayastor-snapshot` uses driver `csi.nvmf.openebs.io`,
+- VolumeSnapshotClass `mayastor-snapshot` uses driver `io.openebs.csi-mayastor`,
   deletionPolicy `Delete`. Customizable via `spec.mayastor.snapshotClassName`.
 
 ---

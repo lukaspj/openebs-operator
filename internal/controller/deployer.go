@@ -75,7 +75,7 @@ const (
 	mayastorCSINodeName            = "mayastor-csi-node"
 	mayastorDiskpoolName           = "mayastor-operator-diskpool"
 	mayastorHANodeName             = "mayastor-agent-ha-node"
-	mayastorCSIDriverName          = "csi.nvmf.openebs.io"
+	mayastorCSIDriverName          = "io.openebs.csi-mayastor"
 	mayastorSCName                 = "mayastor"
 	mayastorSnapshotClassName      = "mayastor-snapshot"
 )

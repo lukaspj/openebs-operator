@@ -914,6 +914,21 @@ func TestMayastorClusterRole(t *testing.T) {
 	if len(cr.Rules) < 3 {
 		t.Errorf("expected at least 3 rules, got %d", len(cr.Rules))
 	}
+	hasStatusPatch := false
+	for _, r := range cr.Rules {
+		for _, res := range r.Resources {
+			if res == "volumeattachments/status" {
+				for _, v := range r.Verbs {
+					if v == "patch" {
+						hasStatusPatch = true
+					}
+				}
+			}
+		}
+	}
+	if !hasStatusPatch {
+		t.Error("expected volumeattachments/status patch rule")
+	}
 }
 
 func TestMayastorClusterRoleBinding(t *testing.T) {

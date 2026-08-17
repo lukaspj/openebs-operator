@@ -839,6 +839,7 @@ func mayastorClusterRole() *rbacv1.ClusterRole {
 			{APIGroups: []string{"apps"}, Resources: []string{"deployments", "daemonsets", "statefulsets"}, Verbs: []string{"*"}},
 			{APIGroups: []string{"batch"}, Resources: []string{"jobs"}, Verbs: []string{"*"}},
 			{APIGroups: []string{"storage.k8s.io"}, Resources: []string{"storageclasses", "volumeattachments", "csinodes", "volumeattributesclasses"}, Verbs: []string{"*"}},
+			{APIGroups: []string{"storage.k8s.io"}, Resources: []string{"volumeattachments/status"}, Verbs: []string{"patch"}},
 			{APIGroups: []string{"coordination.k8s.io"}, Resources: []string{"leases"}, Verbs: []string{"*"}},
 			{APIGroups: []string{"apiextensions.k8s.io"}, Resources: []string{"customresourcedefinitions"}, Verbs: []string{"get", "list", "watch", "create", "update", "patch", "delete"}},
 			{APIGroups: []string{"apiextensions.k8s.io"}, Resources: []string{"customresourcedefinitions/status"}, Verbs: []string{"get", "patch", "update"}},
