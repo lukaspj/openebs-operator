@@ -209,22 +209,28 @@ type MayastorConfig struct {
 	// +kubebuilder:default="velero"
 	// +optional
 	EtcdVeleroNamespace string `json:"etcdVeleroNamespace,omitempty"`
+
+	// IoEngineEnvContext passes additional arguments to the io-engine
+	// Environment Abstraction Layer, e.g. "iova-mode=pa" for nodes
+	// without IOMMU support. Mirrors the chart's io_engine.envcontext.
+	// +optional
+	IoEngineEnvContext string `json:"ioEngineEnvContext,omitempty"`
 }
 
 // ImageConfig overrides container images for OpenEBS components.
 type ImageConfig struct {
-	LVM              string `json:"lvm,omitempty"`
-	Hostpath         string `json:"hostpath,omitempty"`
-	ZFS              string `json:"zfs,omitempty"`
-	Rawfile          string `json:"rawfile,omitempty"`
-	CSIProvisioner   string `json:"csiProvisioner,omitempty"`
-	CSIResizer       string `json:"csiResizer,omitempty"`
-	CSISnapshotter   string `json:"csiSnapshotter,omitempty"`
+	LVM                   string `json:"lvm,omitempty"`
+	Hostpath              string `json:"hostpath,omitempty"`
+	ZFS                   string `json:"zfs,omitempty"`
+	Rawfile               string `json:"rawfile,omitempty"`
+	CSIProvisioner        string `json:"csiProvisioner,omitempty"`
+	CSIResizer            string `json:"csiResizer,omitempty"`
+	CSISnapshotter        string `json:"csiSnapshotter,omitempty"`
 	CSIAttacher           string `json:"csiAttacher,omitempty"`
 	CSISnapshotController string `json:"csiSnapshotController,omitempty"`
 	CSINodeRegistrar      string `json:"csiNodeRegistrar,omitempty"`
-	Mayastor         string `json:"mayastor,omitempty"`
-	Etcd             string `json:"etcd,omitempty"`
+	Mayastor              string `json:"mayastor,omitempty"`
+	Etcd                  string `json:"etcd,omitempty"`
 }
 
 // ResourceSpec defines CPU and memory resources.

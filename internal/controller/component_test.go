@@ -1128,6 +1128,36 @@ func TestMayastorIOEngineDaemonSet(t *testing.T) {
 	if _, ok := ds.Spec.Template.Spec.NodeSelector["openebs.io/engine"]; !ok {
 		t.Error("expected nodeSelector openebs.io/engine=mayastor")
 	}
+	for _, arg := range ds.Spec.Template.Spec.Containers[0].Args {
+		if arg == "--env-context=--iova-mode=pa" {
+			t.Error("did not expect --env-context arg when ioEngineEnvContext is empty")
+		}
+	}
+}
+
+func TestMayastorIOEngineEnvContext(t *testing.T) {
+	instance := &storagev1alpha1.OpenEBS{
+		Spec: storagev1alpha1.OpenEBSSpec{
+			Mayastor: &storagev1alpha1.MayastorConfig{Enabled: true, IoEngineEnvContext: "iova-mode=pa"},
+		},
+	}
+	ds := mayastorIOEngineDaemonSet(instance)
+	args := ds.Spec.Template.Spec.Containers[0].Args
+	idx := -1
+	for i, arg := range args {
+		if arg == "--env-context=--iova-mode=pa" {
+			idx = i
+		}
+	}
+	if idx == -1 {
+		t.Fatal("expected --env-context=--iova-mode=pa arg")
+	}
+	if idx > 0 && args[idx-1] != "--api-versions=v1" {
+		t.Errorf("expected --env-context after --api-versions, got before %q", args[idx-1])
+	}
+	if idx < len(args)-1 && args[idx+1] != "--tgt-crdt=30" {
+		t.Errorf("expected --env-context before --tgt-crdt, got after %q", args[idx+1])
+	}
 }
 
 func TestMayastorCSINodeDaemonSet(t *testing.T) {

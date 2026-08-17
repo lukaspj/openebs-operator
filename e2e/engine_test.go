@@ -216,6 +216,53 @@ func TestEtcdVeleroBackupAndSchedule(t *testing.T) {
 	}
 }
 
+func TestIOEngineEnvContext(t *testing.T) {
+	ctx := context.Background()
+	updateCR(ctx, t, crName, func(cr *storagev1alpha1.OpenEBS) {
+		cr.Spec.Mayastor = &storagev1alpha1.MayastorConfig{
+			Enabled:            true,
+			IoEngineEnvContext: "iova-mode=pa",
+		}
+	})
+	waitForCRReady(ctx, t, crName)
+
+	ds := &appsv1.DaemonSet{}
+	err := wait.PollUntilContextTimeout(ctx, defaultInterval, defaultTimeout, true, func(ctx context.Context) (bool, error) {
+		if err := k8sClient.Get(ctx, client.ObjectKey{Name: "mayastor-io-engine", Namespace: mayastorNamespace}, ds); err != nil {
+			return false, nil
+		}
+		for _, arg := range ds.Spec.Template.Spec.Containers[0].Args {
+			if arg == "--env-context=--iova-mode=pa" {
+				return true, nil
+			}
+		}
+		return false, nil
+	})
+	if err != nil {
+		t.Fatalf("io-engine did not get --env-context arg: %v", err)
+	}
+
+	updateCR(ctx, t, crName, func(cr *storagev1alpha1.OpenEBS) {
+		cr.Spec.Mayastor.IoEngineEnvContext = ""
+	})
+	waitForCRReady(ctx, t, crName)
+
+	err = wait.PollUntilContextTimeout(ctx, defaultInterval, defaultTimeout, true, func(ctx context.Context) (bool, error) {
+		if err := k8sClient.Get(ctx, client.ObjectKey{Name: "mayastor-io-engine", Namespace: mayastorNamespace}, ds); err != nil {
+			return false, nil
+		}
+		for _, arg := range ds.Spec.Template.Spec.Containers[0].Args {
+			if arg == "--env-context=--iova-mode=pa" {
+				return false, nil
+			}
+		}
+		return true, nil
+	})
+	if err != nil {
+		t.Fatalf("io-engine --env-context arg not removed after disable: %v", err)
+	}
+}
+
 func TestCRDeleteCleanup(t *testing.T) {
 	ctx := context.Background()
 	deleteCR(ctx, t, crName)

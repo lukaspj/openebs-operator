@@ -1383,6 +1383,32 @@ func mayastorCSIControllerDeployment(instance *storagev1alpha1.OpenEBS) *appsv1.
 	}
 }
 
+func ioEngineArgs(instance *storagev1alpha1.OpenEBS) []string {
+	args := []string{
+		"--grpc-ip=$(MY_POD_IP)",
+		"--grpc-port=10124",
+		"-N$(MY_NODE_NAME)",
+		"-Rhttps://" + mayastorAgentCoreName + ":50051",
+		"-y/var/local/mayastor/io-engine/config.yaml",
+		"-l1,2",
+		"-p=mayastor-etcd:2379",
+		"--ptpl-dir=/var/local/mayastor/io-engine/ptpl/",
+		"--api-versions=v1",
+	}
+	if instance.Spec.Mayastor != nil && instance.Spec.Mayastor.IoEngineEnvContext != "" {
+		args = append(args, "--env-context=--"+instance.Spec.Mayastor.IoEngineEnvContext)
+	}
+	args = append(args,
+		"--tgt-crdt=30",
+		"--ps-retries=300",
+		"--pool-io-error-threshold=64",
+		"--pool-io-stall-deadline=110s110s",
+		"--pool-io-stall-transition-threshold=3",
+		"--pool-io-stall-transition-window=3h",
+	)
+	return args
+}
+
 func mayastorIOEngineDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.DaemonSet {
 	tag := defaultMayastorTag
 	if instance.Spec.Images != nil && instance.Spec.Images.Mayastor != "" {
@@ -1419,23 +1445,7 @@ func mayastorIOEngineDaemonSet(instance *storagev1alpha1.OpenEBS) *appsv1.Daemon
 						SecurityContext: &corev1.SecurityContext{
 							Privileged: boolPtr(true),
 						},
-						Args: []string{
-							"--grpc-ip=$(MY_POD_IP)",
-							"--grpc-port=10124",
-							"-N$(MY_NODE_NAME)",
-							"-Rhttps://" + mayastorAgentCoreName + ":50051",
-							"-y/var/local/mayastor/io-engine/config.yaml",
-							"-l1,2",
-							"-p=mayastor-etcd:2379",
-							"--ptpl-dir=/var/local/mayastor/io-engine/ptpl/",
-							"--api-versions=v1",
-							"--tgt-crdt=30",
-							"--ps-retries=300",
-							"--pool-io-error-threshold=64",
-							"--pool-io-stall-deadline=110s110s",
-							"--pool-io-stall-transition-threshold=3",
-							"--pool-io-stall-transition-window=3h",
-						},
+						Args: ioEngineArgs(instance),
 						Env: []corev1.EnvVar{
 							{Name: "RUST_LOG", Value: "info"},
 							{Name: "NVMF_TCP_NUM_SHARED_BUF", Value: "2047"},
