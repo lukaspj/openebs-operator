@@ -1081,7 +1081,7 @@ func TestMayastorEtcdBootstrapConfig(t *testing.T) {
 	script := c.Command[2]
 	for _, want := range []string{
 		"--listen-peer-urls=http://0.0.0.0:2380",
-		"--advertise-peer-urls=",
+		"--initial-advertise-peer-urls=",
 		"--initial-cluster-state=new",
 		"--initial-cluster-state=existing",
 		"member add",
@@ -1090,6 +1090,9 @@ func TestMayastorEtcdBootstrapConfig(t *testing.T) {
 		if !strings.Contains(script, want) {
 			t.Errorf("bootstrap script missing %q", want)
 		}
+	}
+	if strings.Contains(script, "--advertise-peer-urls") {
+		t.Error("bootstrap script must not use --advertise-peer-urls (removed in etcd 3.6)")
 	}
 	if c.ReadinessProbe == nil || c.ReadinessProbe.ProbeHandler.Exec == nil {
 		t.Error("expected etcd readiness probe")

@@ -24,6 +24,12 @@ jobs:
           cluster_name: openebs-e2e
           wait: 120s
 
+      - name: Install local-path provisioner (default StorageClass)
+        run: |
+          kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.31/deploy/local-path-storage.yaml
+          kubectl -n local-path-storage rollout status deployment/local-path-provisioner --timeout=120s
+          kubectl get storageclass
+
       - name: Build and load operator image
         run: |
           docker build -t openebs-operator:e2e -f Dockerfile .

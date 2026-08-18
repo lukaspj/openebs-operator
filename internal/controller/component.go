@@ -876,7 +876,7 @@ if [ -z "$(ls -A "${DATA_DIR}" 2>/dev/null)" ]; then
       --listen-client-urls=http://0.0.0.0:2379 \
       --advertise-client-urls="${CLIENT_URL}" \
       --listen-peer-urls=http://0.0.0.0:2380 \
-      --advertise-peer-urls="${MEMBER_URL}" \
+      --initial-advertise-peer-urls="${MEMBER_URL}" \
       --initial-cluster="etcd-0=http://etcd-0.mayastor-etcd:2380" \
       --initial-cluster-state=new
   fi
@@ -889,7 +889,7 @@ if [ -z "$(ls -A "${DATA_DIR}" 2>/dev/null)" ]; then
     --listen-client-urls=http://0.0.0.0:2379 \
     --advertise-client-urls="${CLIENT_URL}" \
     --listen-peer-urls=http://0.0.0.0:2380 \
-    --advertise-peer-urls="${MEMBER_URL}" \
+    --initial-advertise-peer-urls="${MEMBER_URL}" \
     --initial-cluster="${INITIAL_CLUSTER}" \
     --initial-cluster-state=existing
 fi
@@ -897,7 +897,7 @@ exec etcd \
   --listen-client-urls=http://0.0.0.0:2379 \
   --advertise-client-urls="${CLIENT_URL}" \
   --listen-peer-urls=http://0.0.0.0:2380 \
-  --advertise-peer-urls="${MEMBER_URL}" \
+  --initial-advertise-peer-urls="${MEMBER_URL}" \
   --initial-cluster-state=existing
 `
 

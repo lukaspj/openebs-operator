@@ -88,7 +88,7 @@ spec:
                       type: boolean
                     etcdReplicaCount:
                       type: integer
-                      default: 3
+                      default: 1
                     ioEngineResources:
                       type: object
                       properties:

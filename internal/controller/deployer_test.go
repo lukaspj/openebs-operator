@@ -11,8 +11,10 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
@@ -971,6 +973,48 @@ func TestStsImmutableDrift(t *testing.T) {
 	b.Spec.Template.Spec.Containers[0].Image = "img:v2"
 	if stsImmutableDrift(a, b) {
 		t.Error("template image change should NOT be detected as drift")
+	}
+
+	a = minimalStatefulSet()
+	a.Spec.VolumeClaimTemplates = []corev1.PersistentVolumeClaim{{
+		ObjectMeta: metav1.ObjectMeta{Name: "data", Labels: map[string]string{"app": "etcd"}},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			StorageClassName: ptr.To("standard"),
+			Resources:        corev1.VolumeResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("10Gi")}},
+		},
+	}}
+	b = minimalStatefulSet()
+	b.Spec.VolumeClaimTemplates = []corev1.PersistentVolumeClaim{{
+		ObjectMeta: metav1.ObjectMeta{Name: "data"},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			StorageClassName: ptr.To("standard"),
+			Resources:        corev1.VolumeResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("10Gi")}},
+		},
+	}}
+	if stsImmutableDrift(a, b) {
+		t.Error("volumeClaimTemplates label-only change should NOT be detected as drift")
+	}
+
+	b = minimalStatefulSet()
+	b.Spec.VolumeClaimTemplates = []corev1.PersistentVolumeClaim{{
+		TypeMeta:   metav1.TypeMeta{APIVersion: "v1", Kind: "PersistentVolumeClaim"},
+		ObjectMeta: metav1.ObjectMeta{Name: "data", Labels: map[string]string{"app": "etcd"}},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			StorageClassName: ptr.To("standard"),
+			Resources:        corev1.VolumeResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceStorage: resource.MustParse("10Gi")}},
+		},
+		Status: corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimPending},
+	}}
+	if stsImmutableDrift(a, b) {
+		t.Error("volumeClaimTemplates TypeMeta/status change should NOT be detected as drift")
+	}
+
+	b.Spec.VolumeClaimTemplates[0].Spec.Resources.Requests[corev1.ResourceStorage] = resource.MustParse("20Gi")
+	if !stsImmutableDrift(a, b) {
+		t.Error("volumeClaimTemplates storage size change should be detected as drift")
 	}
 }
 

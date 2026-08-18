@@ -632,6 +632,7 @@ func (d *Deployer) applyStatefulSet(ctx context.Context, sts *appsv1.StatefulSet
 		}
 
 		sts.SetResourceVersion(existing.GetResourceVersion())
+		sts.Spec.VolumeClaimTemplates = existing.Spec.VolumeClaimTemplates
 		return d.Update(ctx, sts)
 	})
 }
@@ -694,10 +695,24 @@ func stsImmutableDriftFields(existing, desired *appsv1.StatefulSet) []string {
 	if !equality.Semantic.DeepEqual(existing.Spec.Selector, desired.Spec.Selector) {
 		fields = append(fields, "selector")
 	}
-	if !equality.Semantic.DeepEqual(existing.Spec.VolumeClaimTemplates, desired.Spec.VolumeClaimTemplates) {
+	if !volumeClaimTemplatesEqual(existing.Spec.VolumeClaimTemplates, desired.Spec.VolumeClaimTemplates) {
 		fields = append(fields, "volumeClaimTemplates")
 	}
 	return fields
+}
+
+func volumeClaimTemplatesEqual(existing, desired []corev1.PersistentVolumeClaim) bool {
+	normalize := func(templates []corev1.PersistentVolumeClaim) []corev1.PersistentVolumeClaim {
+		out := make([]corev1.PersistentVolumeClaim, len(templates))
+		copy(out, templates)
+		for i := range out {
+			out[i].TypeMeta = metav1.TypeMeta{}
+			out[i].ObjectMeta = metav1.ObjectMeta{Name: out[i].Name}
+			out[i].Status = corev1.PersistentVolumeClaimStatus{}
+		}
+		return out
+	}
+	return equality.Semantic.DeepEqual(normalize(existing), normalize(desired))
 }
 
 func (d *Deployer) engineFailed(engine storagev1alpha1.OpenEBSEngine, err error) storagev1alpha1.EngineStatus {
