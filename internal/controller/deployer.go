@@ -266,7 +266,7 @@ func (d *Deployer) deployMayastor(ctx context.Context) storagev1alpha1.EngineSta
 		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
 	}
 
-	if err := d.apply(ctx, mayastorEtcdService()); err != nil {
+	if err := d.applyService(ctx, mayastorEtcdService()); err != nil {
 		logger.Error(err, "failed to apply etcd Service")
 		return d.engineFailed(storagev1alpha1.OpenEBSEngineMayastor, err)
 	}
@@ -636,6 +636,42 @@ func (d *Deployer) applyStatefulSet(ctx context.Context, sts *appsv1.StatefulSet
 	})
 }
 
+func (d *Deployer) applyService(ctx context.Context, svc *corev1.Service) error {
+	if d.instance != nil {
+		svc.SetOwnerReferences(ownerRefs(d.instance))
+	}
+
+	key := client.ObjectKeyFromObject(svc)
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		existing := &corev1.Service{}
+		if err := d.Get(ctx, key, existing); err != nil {
+			if !errors.IsNotFound(err) {
+				return err
+			}
+			return d.Create(ctx, svc)
+		}
+
+		if existing.Spec.ClusterIP != svc.Spec.ClusterIP {
+			owned := (d.instance != nil && metav1.IsControlledBy(existing, d.instance)) ||
+				existing.GetLabels()[managedLabelKey] == managedLabelValue
+			if !owned {
+				return fmt.Errorf(
+					"Service %s/%s exists with clusterIP %q (desired %q) and is not managed by this operator; delete it manually: kubectl -n %s delete svc %s",
+					existing.Namespace, existing.Name, existing.Spec.ClusterIP, svc.Spec.ClusterIP,
+					existing.Namespace, existing.Name)
+			}
+			if err := d.Delete(ctx, existing); err != nil {
+				return err
+			}
+			svc.SetResourceVersion("")
+			return d.Create(ctx, svc)
+		}
+
+		svc.SetResourceVersion(existing.GetResourceVersion())
+		return d.Update(ctx, svc)
+	})
+}
+
 func (d *Deployer) isOperatorOwned(sts *appsv1.StatefulSet) bool {
 	if d.instance != nil && metav1.IsControlledBy(sts, d.instance) {
 		return true
@@ -674,9 +710,9 @@ func (d *Deployer) engineFailed(engine storagev1alpha1.OpenEBSEngine, err error)
 
 func labels(component string) map[string]string {
 	return map[string]string{
-		"app.kubernetes.io/name":       "openebs",
-		"app.kubernetes.io/component":  component,
-		managedLabelKey:                managedLabelValue,
+		"app.kubernetes.io/name":      "openebs",
+		"app.kubernetes.io/component": component,
+		managedLabelKey:               managedLabelValue,
 	}
 }
 

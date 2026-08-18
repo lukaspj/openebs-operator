@@ -860,6 +860,47 @@ func mayastorClusterRoleBinding() *rbacv1.ClusterRoleBinding {
 	}
 }
 
+// etcdBootstrapScript boots a mayastor etcd StatefulSet member. etcd-0
+// bootstraps a single-member cluster; every other pod joins it via
+// `etcdctl member add` (idempotent), so scale-up works on a running
+// cluster. Members with existing data restart from their persisted
+// cluster config. Peer URLs must use the per-pod headless DNS name —
+// the StatefulSet service is headless.
+const etcdBootstrapScript = `#!/bin/sh
+MEMBER_URL="http://${POD_NAME}.mayastor-etcd:2380"
+CLIENT_URL="http://${POD_NAME}.mayastor-etcd:2379"
+DATA_DIR="${ETCD_DATA_DIR:-/bitnami/etcd/data}"
+if [ -z "$(ls -A "${DATA_DIR}" 2>/dev/null)" ]; then
+  if [ "${POD_NAME}" = "etcd-0" ]; then
+    exec etcd \
+      --listen-client-urls=http://0.0.0.0:2379 \
+      --advertise-client-urls="${CLIENT_URL}" \
+      --listen-peer-urls=http://0.0.0.0:2380 \
+      --advertise-peer-urls="${MEMBER_URL}" \
+      --initial-cluster="etcd-0=http://etcd-0.mayastor-etcd:2380" \
+      --initial-cluster-state=new
+  fi
+  until etcdctl --endpoints="http://mayastor-etcd:2379" member list 2>/dev/null | grep -qE "^[0-9a-fA-F]+, [a-z]+, ${POD_NAME},"; do
+    etcdctl --endpoints="http://mayastor-etcd:2379" member add "${POD_NAME}" --peer-urls="${MEMBER_URL}" >/dev/null 2>&1 || true
+    sleep 5
+  done
+  INITIAL_CLUSTER=$(etcdctl --endpoints="http://mayastor-etcd:2379" member list | awk -F', ' '{printf "%s=%s,", $3, $4}' | sed 's/,$//')
+  exec etcd \
+    --listen-client-urls=http://0.0.0.0:2379 \
+    --advertise-client-urls="${CLIENT_URL}" \
+    --listen-peer-urls=http://0.0.0.0:2380 \
+    --advertise-peer-urls="${MEMBER_URL}" \
+    --initial-cluster="${INITIAL_CLUSTER}" \
+    --initial-cluster-state=existing
+fi
+exec etcd \
+  --listen-client-urls=http://0.0.0.0:2379 \
+  --advertise-client-urls="${CLIENT_URL}" \
+  --listen-peer-urls=http://0.0.0.0:2380 \
+  --advertise-peer-urls="${MEMBER_URL}" \
+  --initial-cluster-state=existing
+`
+
 func mayastorEtcdStatefulSet(instance *storagev1alpha1.OpenEBS) *appsv1.StatefulSet {
 	etcdImg := defaultEtcdImage
 	if instance.Spec.Images != nil {
@@ -886,15 +927,19 @@ func mayastorEtcdStatefulSet(instance *storagev1alpha1.OpenEBS) *appsv1.Stateful
 	podAnnotations := map[string]string{}
 	if instance.Spec.Mayastor != nil && instance.Spec.Mayastor.EtcdVeleroBackup {
 		podAnnotations = map[string]string{
-			"backup.velero.io/backup-volumes":     "data",
-			"pre.hook.backup.velero.io/container": "etcd",
-			"pre.hook.backup.velero.io/command":   `["/bin/sh","-c","etcdctl snapshot save /bitnami/etcd/velero-etcd-snapshot.db && sync"]`,
-			"pre.hook.backup.velero.io/timeout":   "5m",
-			"pre.hook.backup.velero.io/on-error":  "Fail",
+			"backup.velero.io/backup-volumes":      "data",
+			"pre.hook.backup.velero.io/container":  "etcd",
+			"pre.hook.backup.velero.io/command":    `["/bin/sh","-c","etcdctl snapshot save /bitnami/etcd/velero-etcd-snapshot.db && sync"]`,
+			"pre.hook.backup.velero.io/timeout":    "5m",
+			"pre.hook.backup.velero.io/on-error":   "Fail",
+			"post.hook.backup.velero.io/container": "etcd",
+			"post.hook.backup.velero.io/command":   `["/bin/sh","-c","rm -f /bitnami/etcd/velero-etcd-snapshot.db"]`,
 		}
 	}
+	volumeMode := corev1.PersistentVolumeFilesystem
 	pvcSpec := corev1.PersistentVolumeClaimSpec{
 		AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+		VolumeMode:  &volumeMode,
 		Resources: corev1.VolumeResourceRequirements{
 			Requests: corev1.ResourceList{
 				corev1.ResourceStorage: resource.MustParse(storageSize),
@@ -911,9 +956,10 @@ func mayastorEtcdStatefulSet(instance *storagev1alpha1.OpenEBS) *appsv1.Stateful
 			Labels:    lbls,
 		},
 		Spec: appsv1.StatefulSetSpec{
-			ServiceName: mayastorEtcdServiceName,
-			Replicas:    &replicas,
-			Selector:    &metav1.LabelSelector{MatchLabels: lbls},
+			ServiceName:         mayastorEtcdServiceName,
+			Replicas:            &replicas,
+			PodManagementPolicy: appsv1.ParallelPodManagement,
+			Selector:            &metav1.LabelSelector{MatchLabels: lbls},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{Labels: lbls, Annotations: podAnnotations},
 				Spec: corev1.PodSpec{
@@ -936,13 +982,9 @@ func mayastorEtcdStatefulSet(instance *storagev1alpha1.OpenEBS) *appsv1.Stateful
 					Containers: []corev1.Container{{
 						Name:    "etcd",
 						Image:   etcdImg,
-						Command: []string{"etcd"},
+						Command: []string{"/bin/sh", "-ec", etcdBootstrapScript},
 						SecurityContext: &corev1.SecurityContext{
 							RunAsUser: &etcdUID,
-						},
-						Args: []string{
-							"--listen-client-urls=http://0.0.0.0:2379",
-							"--advertise-client-urls=http://$(POD_NAME).mayastor-etcd:2379",
 						},
 						Env: []corev1.EnvVar{
 							{Name: "POD_NAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"}}},
@@ -954,6 +996,14 @@ func mayastorEtcdStatefulSet(instance *storagev1alpha1.OpenEBS) *appsv1.Stateful
 						Ports: []corev1.ContainerPort{
 							{Name: "client", ContainerPort: 2379},
 							{Name: "peer", ContainerPort: 2380},
+						},
+						ReadinessProbe: &corev1.Probe{
+							ProbeHandler: corev1.ProbeHandler{
+								Exec: &corev1.ExecAction{Command: []string{"etcdctl", "--endpoints=http://127.0.0.1:2379", "endpoint", "health"}},
+							},
+							InitialDelaySeconds: 5,
+							PeriodSeconds:       10,
+							TimeoutSeconds:      5,
 						},
 						VolumeMounts: []corev1.VolumeMount{
 							{Name: "data", MountPath: "/bitnami/etcd"},
@@ -983,9 +1033,11 @@ func mayastorEtcdService() *corev1.Service {
 			Labels:    lbls,
 		},
 		Spec: corev1.ServiceSpec{
-			Selector: lbls,
+			ClusterIP: corev1.ClusterIPNone,
+			Selector:  lbls,
 			Ports: []corev1.ServicePort{
 				{Name: "client", Port: 2379},
+				{Name: "peer", Port: 2380},
 			},
 		},
 	}

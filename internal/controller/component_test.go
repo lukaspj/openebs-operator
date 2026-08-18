@@ -1045,8 +1045,63 @@ func TestMayastorEtcdService(t *testing.T) {
 	if svc.Namespace != mayastorNamespace {
 		t.Errorf("expected namespace %s, got %s", mayastorNamespace, svc.Namespace)
 	}
-	if len(svc.Spec.Ports) != 1 {
-		t.Errorf("expected 1 port, got %d", len(svc.Spec.Ports))
+	if svc.Spec.ClusterIP != corev1.ClusterIPNone {
+		t.Errorf("expected headless service (clusterIP None), got %q", svc.Spec.ClusterIP)
+	}
+	if len(svc.Spec.Ports) != 2 {
+		t.Errorf("expected 2 ports (client+peer), got %d", len(svc.Spec.Ports))
+	}
+	for _, p := range svc.Spec.Ports {
+		if p.Name == "peer" && p.Port != 2380 {
+			t.Errorf("expected peer port 2380, got %d", p.Port)
+		}
+		if p.Name == "client" && p.Port != 2379 {
+			t.Errorf("expected client port 2379, got %d", p.Port)
+		}
+	}
+}
+
+func TestMayastorEtcdBootstrapConfig(t *testing.T) {
+	instance := &storagev1alpha1.OpenEBS{
+		Spec: storagev1alpha1.OpenEBSSpec{
+			Mayastor: &storagev1alpha1.MayastorConfig{Enabled: true, EtcdReplicaCount: 3},
+		},
+	}
+	sts := mayastorEtcdStatefulSet(instance)
+	if *sts.Spec.Replicas != 3 {
+		t.Errorf("expected 3 replicas, got %d", *sts.Spec.Replicas)
+	}
+	if sts.Spec.PodManagementPolicy != appsv1.ParallelPodManagement {
+		t.Errorf("expected Parallel pod management, got %s", sts.Spec.PodManagementPolicy)
+	}
+	c := sts.Spec.Template.Spec.Containers[0]
+	if len(c.Command) != 3 || c.Command[0] != "/bin/sh" || c.Command[1] != "-ec" {
+		t.Fatalf("expected bootstrap script wrapper command, got %v", c.Command)
+	}
+	script := c.Command[2]
+	for _, want := range []string{
+		"--listen-peer-urls=http://0.0.0.0:2380",
+		"--advertise-peer-urls=",
+		"--initial-cluster-state=new",
+		"--initial-cluster-state=existing",
+		"member add",
+		"--initial-cluster=\"etcd-0=http://etcd-0.mayastor-etcd:2380\"",
+	} {
+		if !strings.Contains(script, want) {
+			t.Errorf("bootstrap script missing %q", want)
+		}
+	}
+	if c.ReadinessProbe == nil || c.ReadinessProbe.ProbeHandler.Exec == nil {
+		t.Error("expected etcd readiness probe")
+	} else if !strings.Contains(strings.Join(c.ReadinessProbe.ProbeHandler.Exec.Command, " "), "endpoint health") {
+		t.Errorf("expected etcdctl endpoint health probe, got %v", c.ReadinessProbe.ProbeHandler.Exec.Command)
+	}
+	if len(sts.Spec.VolumeClaimTemplates) != 1 {
+		t.Fatalf("expected 1 PVC template, got %d", len(sts.Spec.VolumeClaimTemplates))
+	}
+	pvc := sts.Spec.VolumeClaimTemplates[0]
+	if pvc.Spec.VolumeMode == nil || *pvc.Spec.VolumeMode != corev1.PersistentVolumeFilesystem {
+		t.Errorf("expected explicit volumeMode Filesystem, got %v", pvc.Spec.VolumeMode)
 	}
 }
 
@@ -1367,6 +1422,12 @@ func TestMayastorEtcdVeleroBackupAnnotations(t *testing.T) {
 		}
 		if ann["pre.hook.backup.velero.io/command"] == "" {
 			t.Error("expected pre-backup hook command")
+		}
+		if ann["post.hook.backup.velero.io/container"] != "etcd" {
+			t.Errorf("expected post-hook container etcd, got %q", ann["post.hook.backup.velero.io/container"])
+		}
+		if !strings.Contains(ann["post.hook.backup.velero.io/command"], "rm -f /bitnami/etcd/velero-etcd-snapshot.db") {
+			t.Errorf("expected post-hook to remove snapshot file, got %q", ann["post.hook.backup.velero.io/command"])
 		}
 	})
 }

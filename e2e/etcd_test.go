@@ -35,10 +35,10 @@ func TestEtcdVersionUpgrade(t *testing.T) {
 	cr := &storagev1alpha1.OpenEBS{
 		ObjectMeta: metav1.ObjectMeta{Name: "e2e-etcd-upgrade"},
 		Spec: storagev1alpha1.OpenEBSSpec{
-		Mayastor: &storagev1alpha1.MayastorConfig{Enabled: true},
-		Images: &storagev1alpha1.ImageConfig{
-			Etcd: "openebs/etcd:3.5.6-debian-11-r10",
-		},
+			Mayastor: &storagev1alpha1.MayastorConfig{Enabled: true},
+			Images: &storagev1alpha1.ImageConfig{
+				Etcd: "openebs/etcd:3.5.6-debian-11-r10",
+			},
 		},
 	}
 	createCR(ctx, t, cr)
@@ -95,6 +95,7 @@ func TestEtcdReplicaScaleUp(t *testing.T) {
 	waitForCRReady(ctx, t, "e2e-etcd-scale")
 
 	waitForStatefulSetReplicas(ctx, t, "mayastor-etcd", mayastorNamespace, 2)
+	waitForStatefulSet(ctx, t, "mayastor-etcd", mayastorNamespace, 2)
 
 	deleteCR(ctx, t, "e2e-etcd-scale")
 }
@@ -105,8 +106,8 @@ func TestEtcdStoragePVC(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "e2e-etcd-pvc"},
 		Spec: storagev1alpha1.OpenEBSSpec{
 			Mayastor: &storagev1alpha1.MayastorConfig{
-				Enabled:          true,
-				EtcdStorageSize:  "5Gi",
+				Enabled:         true,
+				EtcdStorageSize: "5Gi",
 			},
 		},
 	}

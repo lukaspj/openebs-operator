@@ -973,3 +973,75 @@ func TestStsImmutableDrift(t *testing.T) {
 		t.Error("template image change should NOT be detected as drift")
 	}
 }
+
+func TestDeployerApplyServiceCreates(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	cl := fake.NewClientBuilder().WithScheme(scheme).Build()
+	d := &Deployer{Client: cl, Scheme: scheme}
+
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-svc", Namespace: "default"},
+		Spec:       corev1.ServiceSpec{ClusterIP: corev1.ClusterIPNone, Ports: []corev1.ServicePort{{Name: "client", Port: 2379}}},
+	}
+	if err := d.applyService(context.Background(), svc); err != nil {
+		t.Fatalf("applyService create failed: %v", err)
+	}
+	got := &corev1.Service{}
+	if err := cl.Get(context.Background(), types.NamespacedName{Name: "test-svc", Namespace: "default"}, got); err != nil {
+		t.Fatalf("Service not found: %v", err)
+	}
+}
+
+func TestDeployerApplyServiceHeadlessRecreates(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	existing := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-svc", Namespace: "default", Labels: map[string]string{managedLabelKey: managedLabelValue}},
+		Spec:       corev1.ServiceSpec{ClusterIP: "10.96.0.10", Ports: []corev1.ServicePort{{Name: "client", Port: 2379}}},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existing).Build()
+	d := &Deployer{Client: cl, Scheme: scheme}
+
+	desired := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-svc", Namespace: "default"},
+		Spec:       corev1.ServiceSpec{ClusterIP: corev1.ClusterIPNone, Ports: []corev1.ServicePort{{Name: "client", Port: 2379}, {Name: "peer", Port: 2380}}},
+	}
+	if err := d.applyService(context.Background(), desired); err != nil {
+		t.Fatalf("applyService headless conversion failed: %v", err)
+	}
+	got := &corev1.Service{}
+	if err := cl.Get(context.Background(), types.NamespacedName{Name: "test-svc", Namespace: "default"}, got); err != nil {
+		t.Fatalf("recreated Service not found: %v", err)
+	}
+	if got.Spec.ClusterIP != corev1.ClusterIPNone {
+		t.Errorf("expected headless clusterIP None, got %q", got.Spec.ClusterIP)
+	}
+	if len(got.Spec.Ports) != 2 {
+		t.Errorf("expected 2 ports after recreation, got %d", len(got.Spec.Ports))
+	}
+}
+
+func TestDeployerApplyServiceForeignClusterIPChangeErrors(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	existing := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-svc", Namespace: "default"},
+		Spec:       corev1.ServiceSpec{ClusterIP: "10.96.0.10", Ports: []corev1.ServicePort{{Name: "client", Port: 2379}}},
+	}
+	cl := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existing).Build()
+	d := &Deployer{Client: cl, Scheme: scheme, instance: &storagev1alpha1.OpenEBS{}}
+
+	desired := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-svc", Namespace: "default"},
+		Spec:       corev1.ServiceSpec{ClusterIP: corev1.ClusterIPNone},
+	}
+	err := d.applyService(context.Background(), desired)
+	if err == nil || !strings.Contains(err.Error(), "not managed") {
+		t.Errorf("expected descriptive error for foreign Service, got: %v", err)
+	}
+	got := &corev1.Service{}
+	if err := cl.Get(context.Background(), types.NamespacedName{Name: "test-svc", Namespace: "default"}, got); err != nil {
+		t.Errorf("foreign Service should not be deleted: %v", err)
+	}
+}
