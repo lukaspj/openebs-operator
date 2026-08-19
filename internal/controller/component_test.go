@@ -1085,7 +1085,7 @@ func TestMayastorEtcdBootstrapConfig(t *testing.T) {
 		"--initial-cluster-state=new",
 		"--initial-cluster-state=existing",
 		"member add",
-		"--initial-cluster=\"etcd-0=http://etcd-0.mayastor-etcd:2380\"",
+		"--initial-cluster=\"mayastor-etcd-0=http://mayastor-etcd-0.mayastor-etcd:2380\"",
 	} {
 		if !strings.Contains(script, want) {
 			t.Errorf("bootstrap script missing %q", want)

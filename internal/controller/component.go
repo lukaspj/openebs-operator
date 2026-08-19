@@ -860,7 +860,7 @@ func mayastorClusterRoleBinding() *rbacv1.ClusterRoleBinding {
 	}
 }
 
-// etcdBootstrapScript boots a mayastor etcd StatefulSet member. etcd-0
+// etcdBootstrapScript boots a mayastor etcd StatefulSet member. mayastor-etcd-0
 // bootstraps a single-member cluster; every other pod joins it via
 // `etcdctl member add` (idempotent), so scale-up works on a running
 // cluster. Members with existing data restart from their persisted
@@ -871,13 +871,13 @@ MEMBER_URL="http://${POD_NAME}.mayastor-etcd:2380"
 CLIENT_URL="http://${POD_NAME}.mayastor-etcd:2379"
 DATA_DIR="${ETCD_DATA_DIR:-/bitnami/etcd/data}"
 if [ -z "$(ls -A "${DATA_DIR}" 2>/dev/null)" ]; then
-  if [ "${POD_NAME}" = "etcd-0" ]; then
+  if [ "${POD_NAME}" = "mayastor-etcd-0" ]; then
     exec etcd \
       --listen-client-urls=http://0.0.0.0:2379 \
       --advertise-client-urls="${CLIENT_URL}" \
       --listen-peer-urls=http://0.0.0.0:2380 \
       --initial-advertise-peer-urls="${MEMBER_URL}" \
-      --initial-cluster="etcd-0=http://etcd-0.mayastor-etcd:2380" \
+      --initial-cluster="mayastor-etcd-0=http://mayastor-etcd-0.mayastor-etcd:2380" \
       --initial-cluster-state=new
   fi
   until etcdctl --endpoints="http://mayastor-etcd:2379" member list 2>/dev/null | grep -qE "^[0-9a-fA-F]+, [a-z]+, ${POD_NAME},"; do
